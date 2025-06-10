@@ -1,0 +1,9 @@
+{
+  "name": "Eufy X10 Pro Omni Debugging",
+  "hacs": "1.32.0",
+  "domains": ["sensor"],
+  "iot_class": "Cloud Polling",
+  "homeassistant": "2023.8.0",
+  "render_readme": true,
+  "image": "icon.png"
+}
