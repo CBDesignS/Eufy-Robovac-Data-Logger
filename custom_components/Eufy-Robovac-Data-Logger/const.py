@@ -1,7 +1,7 @@
 """Constants for Eufy Robovac Data Logger integration."""
 
 # Integration constants
-DOMAIN = "Eufy_Robovac_Data_Logger"
+DOMAIN = "Eufy-Robovac-Data-Logger"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password" 
 CONF_DEBUG_MODE = "debug_mode"
