@@ -183,7 +183,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     openudid=self.openudid
                 )
             
-            # Get device data
+            # Get device data from real API
             devices = await self._eufy_login.init()
             
             if devices:
@@ -203,13 +203,14 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     if dps_data:
                         if do_detailed:
                             self._debug_log(f"📊 DPS data keys found: {list(dps_data.keys())}", "info")
-                        self.raw_data.update(dps_data)
+                        self.raw_data = dps_data  # Use real data only
                         
                         # Log raw data to separate file (only during detailed logging)
                         if do_detailed and self.debug_logger:
                             self.debug_logger.log_raw_data(dps_data)
                     else:
                         self._debug_log("⚠️ No DPS data found for device", "warning", force=True)
+                        # Clear raw data if no DPS data available
                         self.raw_data = {}
                 else:
                     error_msg = f"Target device {self.device_id} not found in device list"
@@ -222,6 +223,8 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 
         except Exception as e:
             self._debug_log(f"❌ Failed to fetch Eufy data: {e}", "error", force=True)
+            # Clear raw data on API failure
+            self.raw_data = {}
             raise
 
     async def _process_sensor_data(self):
@@ -231,7 +234,27 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         if do_detailed:
             self._debug_log("🔧 Processing sensor data...", "info")
         
-        # Process the data
+        # Only process if we have raw data
+        if not self.raw_data:
+            self._debug_log("⚠️ No raw data available for processing", "warning", force=True)
+            # Set basic structure with no sensor values
+            self.parsed_data = {
+                "device_id": self.device_id,
+                "battery": None,
+                "water_tank": None,
+                "clean_speed": None,
+                "work_status": None,
+                "play_pause": None,
+                "raw_keys": [],
+                "monitored_keys_found": [],
+                "monitored_keys_missing": MONITORED_KEYS.copy(),
+                "last_update": time.time(),
+                "update_count": self.update_count,
+                "consecutive_failures": self._consecutive_failures,
+            }
+            return
+        
+        # Process the data with real values
         self.parsed_data = {
             "device_id": self.device_id,
             "battery": self._extract_battery(),
