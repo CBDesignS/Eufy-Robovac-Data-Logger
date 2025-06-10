@@ -24,20 +24,20 @@ This integration focuses on debugging and logging the REST API data from my Eufy
 5. Add this repository URL: `https://github.com/CBDesignS/Eufy-Robovac-Data-Logger`
 6. Select "Integration" as the category
 7. Click "Add"
-8. Find "Eufy X10 Pro Omni Debugging" in HACS and install it
+8. Find "Eufy Robovac Data Logger" in HACS and install it
 9. Restart Home Assistant
 
 ### Manual Installation
 
-1. Copy the `custom_components/eufy_x10_debugging` folder to your `custom_components` directory
+1. Copy the `custom_components/Eufy-Robovac-Data-Logger` folder to your `custom_components` directory
 2. Restart Home Assistant
-3. Go to Configuration > Integrations > Add Integration > "Eufy X10 Pro Omni Debugging"
+3. Go to Configuration > Integrations > Add Integration > "Eufy Robovac Data Logger"
 
 ## ⚙️ Configuration
 
 1. Go to Configuration > Integrations
 2. Click "Add Integration"
-3. Search for "Eufy X10 Pro Omni Debugging"
+3. Search for "Eufy Robovac Data Logger"
 4. Enter your credentials:
    - **Username**: Your Eufy account username
    - **Password**: Your Eufy account password
@@ -81,11 +81,11 @@ The integration creates 6 debug sensors:
 When debug mode is enabled, the integration logs:
 
 ```
-[custom_components.eufy_x10_debugging.coordinator] === EUFY X10 DEBUG UPDATE #1 ===
-[custom_components.eufy_x10_debugging.coordinator] === EUFY X10 DEBUG: RAW API DATA ===
-[custom_components.eufy_x10_debugging.coordinator] === BATTERY PROCESSING (NEW ANDROID APP) ===
-[custom_components.eufy_x10_debugging.coordinator] === WATER TANK PROCESSING (NEW ANDROID APP) ===
-[custom_components.eufy_x10_debugging.coordinator] === PROCESSING SUMMARY ===
+[custom_components.Eufy-Robovac-Data-Logger.coordinator] === EUFY X10 DEBUG UPDATE #1 ===
+[custom_components.Eufy-Robovac-Data-Logger.coordinator] === EUFY X10 DEBUG: RAW API DATA ===
+[custom_components.Eufy-Robovac-Data-Logger.coordinator] === BATTERY PROCESSING (NEW ANDROID APP) ===
+[custom_components.Eufy-Robovac-Data-Logger.coordinator] === WATER TANK PROCESSING (NEW ANDROID APP) ===
+[custom_components.Eufy-Robovac-Data-Logger.coordinator] === PROCESSING SUMMARY ===
 ```
 
 ### Rich Sensor Attributes
@@ -132,7 +132,7 @@ Add this to your Home Assistant `configuration.yaml`:
 logger:
   default: info
   logs:
-    custom_components.eufy_x10_debugging: debug
+    custom_components.Eufy-Robovac-Data-Logger: debug
 ```
 
 Then restart Home Assistant to see detailed logs.
