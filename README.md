@@ -1,4 +1,4 @@
-# Eufy X10 Pro Omni Debugging Integration
+# Eufy Robovac API Data Logger Integration
 
 [![HACS Custom Repository](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger)
 [![GitHub Release](https://img.shields.io/github/release/CBDesignS/Eufy-Robovac-Data-Logger.svg)](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/releases)
@@ -7,11 +7,10 @@ A Home Assistant custom component for debugging Eufy X10 Pro Omni REST API data.
 
 ## 🎯 Purpose
 
-This integration focuses on debugging and logging the REST API data from Eufy X10 Pro Omni devices, particularly the new data sources discovered:
+This integration focuses on debugging and logging the REST API data from my Eufy X10 Pro Omni devices (other devices may work if they use the NEW Eufy Clean Mobile App, but are untested), particularly the new data sources discovered:
 
 - **Key 163**: Battery level (NEW Android App - 100% accuracy)
-- **Key 167**: Water tank level (Byte 4 - 82% accuracy, closest to real 83%)
-- **Key 177**: Alternative water tank source
+- **Key 167**: Water tank level
 - **Key 178**: Real-time data source
 
 ## 📥 Installation
@@ -142,7 +141,7 @@ Then restart Home Assistant to see detailed logs.
 
 Based on extensive protocol analysis:
 
-- **NEW Android App**: Uses different data sources than old app
+- **NEW Android App**: Uses different data sources than old app, so the old mqtt protobuf data no longer exists
 - **Key 163**: Perfect battery source (100% accuracy)
 - **Key 167, Byte 4**: Best water tank source (82% accuracy)
 - **REST API Mode**: New app appears to use REST API only, not MQTT
@@ -171,3 +170,10 @@ This is a debugging integration intended for development purposes. Use at your o
 ## 🙏 Acknowledgments
 
 Based on research into the NEW Android Eufy app protocol and REST API data sources.
+
+## to do list
+rewrite the sensor search code so that found working sensors are no longer searched for.
+add the ability to add and search for new sensors as Eufy includes them in the app (if any new sensors are released)
+Auto add found tested working sensors to Home Assistant.
+
+This is very early test code, contains lots of errors and bugs and may not be of much use if Eufy make big changes to their servers.
