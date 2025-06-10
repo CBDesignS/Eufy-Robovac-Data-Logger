@@ -1,8 +1,9 @@
 """
-REST API connection for Eufy Robovac Data Logger integration - FIXED VERSION.
+REST API connection for Eufy Robovac Data Logger integration - PRODUCTION VERSION.
 Focused on extracting data from NEW Android app sources for debugging purposes.
 Includes both MQTT compatibility and direct REST API calls for accessory data.
 Enhanced with separate debug logging and emoji support.
+All mock data removed for production use.
 """
 import asyncio
 import aiohttp
@@ -17,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 class RestConnect:
     """
-    Enhanced REST API client for Eufy Robovac Data Logger - FIXED VERSION.
+    Production REST API client for Eufy Robovac Data Logger.
     Focuses on NEW Android app data sources with both MQTT and REST API support.
     Handles accessory usage data that has moved from MQTT to REST endpoints.
     """
@@ -47,12 +48,12 @@ class RestConnect:
         # Debug logger reference (will be set by coordinator)
         self.debug_logger = None
         
-        # FIXED: Correct REST API endpoints for Clean/Home devices
+        # REST API endpoints for Clean/Home devices
         self.base_url = "https://api.eufylife.com"
         self.device_data_url = f"{self.base_url}/v1/device/info"
         self.device_status_url = f"{self.base_url}/v1/device/status"
         
-        # NEW: Additional endpoints for accessory data (moved from MQTT to REST)
+        # Additional endpoints for accessory data (moved from MQTT to REST)
         self.accessory_data_url = f"{self.base_url}/v1/device/accessory_info"
         self.consumable_data_url = f"{self.base_url}/v1/device/consumable_status"
         self.runtime_data_url = f"{self.base_url}/v1/device/runtime_info"
@@ -63,7 +64,7 @@ class RestConnect:
         self.clean_accessory_url = f"{self.clean_api_base}/app/device/get_accessory_data"
         
         if self.debug:
-            _LOGGER.info("🔧 Enhanced REST client initialized for device: %s", self.device_id)
+            _LOGGER.info("🔧 Production REST client initialized for device: %s", self.device_id)
 
     def _log_debug(self, message: str):
         """Log debug message to separate logger if available."""
@@ -94,13 +95,13 @@ class RestConnect:
             _LOGGER.error(message)
 
     async def connect(self):
-        """Establish connection and authenticate - FIXED VERSION."""
+        """Establish connection and authenticate."""
         try:
-            self._log_info("🌐 ENHANCED REST API CONNECTION STARTING")
+            self._log_info("🌐 PRODUCTION REST API CONNECTION STARTING")
             self._log_info(f"📱 Device: {self.device_id}")
             self._log_info(f"🏷️ Model: {self.device_model}")
             
-            # Get authentication from the corrected login API
+            # Get authentication from the login API
             await self._authenticate()
             
             # Create HTTP session with proper headers
@@ -110,19 +111,19 @@ class RestConnect:
             await self._initial_data_fetch()
             
             self.is_connected = True
-            self._log_info("✅ Enhanced REST API connection established successfully")
+            self._log_info("✅ Production REST API connection established successfully")
             
         except Exception as e:
-            self._log_error(f"❌ Failed to connect to Enhanced REST API: {e}")
+            self._log_error(f"❌ Failed to connect to Production REST API: {e}")
             self.is_connected = False
             raise
 
     async def _authenticate(self):
-        """Get authentication tokens from the corrected Eufy API."""
+        """Get authentication tokens from the Eufy API."""
         try:
-            self._log_info("🔐 ENHANCED AUTHENTICATION STARTING")
+            self._log_info("🔐 AUTHENTICATION STARTING")
             
-            # FIXED: Use the corrected login API to get all necessary tokens
+            # Use the login API to get all necessary tokens
             if hasattr(self.eufy_api, 'eufyApi') and self.eufy_api.eufyApi:
                 # Ensure we have a valid login
                 login_result = await self.eufy_api.eufyApi.login()
@@ -130,12 +131,12 @@ class RestConnect:
                     self.auth_token = login_result.get('token')
                     self.user_id = login_result.get('user_id')
                     
-                    # FIXED: Get additional tokens for enhanced API access
+                    # Get additional tokens for API access
                     api_instance = self.eufy_api.eufyApi
                     self.user_center_token = getattr(api_instance, 'user_center_token', None)
                     self.gtoken = getattr(api_instance, 'gtoken', None)
                     
-                    self._log_info("✅ Enhanced authentication successful")
+                    self._log_info("✅ Authentication successful")
                     self._log_debug(f"👤 User ID: {self.user_id}")
                     self._log_debug(f"🔑 Access Token: {'✓' if self.auth_token else '✗'}")
                     self._log_debug(f"🎫 User Center Token: {'✓' if self.user_center_token else '✗'}")
@@ -146,15 +147,15 @@ class RestConnect:
                 raise Exception("No Eufy API instance available")
                 
         except Exception as e:
-            self._log_error(f"❌ Enhanced authentication failed: {e}")
+            self._log_error(f"❌ Authentication failed: {e}")
             raise
 
     async def _create_session(self):
-        """Create HTTP session with enhanced headers for both legacy and new APIs."""
+        """Create HTTP session with headers for both legacy and new APIs."""
         if self.session and not self.session.closed:
             await self.session.close()
         
-        # FIXED: Enhanced headers supporting both legacy and new API endpoints
+        # Headers supporting both legacy and new API endpoints
         headers = {
             'User-Agent': 'EufyHome-Android-3.1.3-753',
             'Content-Type': 'application/json',
@@ -178,37 +179,37 @@ class RestConnect:
             headers=headers
         )
         
-        self._log_debug("🌐 Enhanced HTTP session created with authentication headers")
+        self._log_debug("🌐 HTTP session created with authentication headers")
 
     async def _initial_data_fetch(self):
-        """Fetch initial data to test connection with enhanced endpoints."""
+        """Fetch initial data to test connection."""
         try:
-            self._log_info("🎯 ENHANCED INITIAL DATA FETCH")
+            self._log_info("🎯 INITIAL DATA FETCH")
             
             # Try to get device data from multiple sources
             await self.updateDevice(force_update=True)
             
             if self.raw_data:
-                self._log_info(f"✅ Enhanced initial data fetch successful - {len(self.raw_data)} keys received")
+                self._log_info(f"✅ Initial data fetch successful - {len(self.raw_data)} keys received")
             else:
-                self._log_warning("⚠️ No data received in enhanced initial fetch")
+                self._log_warning("⚠️ No data received in initial fetch")
                 
         except Exception as e:
-            self._log_error(f"❌ Enhanced initial data fetch failed: {e}")
+            self._log_error(f"❌ Initial data fetch failed: {e}")
             raise
 
     async def updateDevice(self, force_update: bool = False):
         """
-        Enhanced device data update from multiple REST API sources.
+        Production device data update from multiple REST API sources.
         Combines traditional DPS data with new accessory/consumable data from REST endpoints.
         """
         try:
             if not self.is_connected and not force_update:
-                self._log_warning("⚠️ Not connected, skipping enhanced update")
+                self._log_warning("⚠️ Not connected, skipping update")
                 return
             
             self.update_count += 1
-            self._log_info(f"🔄 ENHANCED UPDATE #{self.update_count} STARTING")
+            self._log_info(f"🔄 UPDATE #{self.update_count} STARTING")
             
             # STEP 1: Get traditional device data (DPS-style)
             device_data = await self._fetch_device_data()
@@ -232,12 +233,16 @@ class RestConnect:
                 self.last_update = time.time()
                 
                 self._log_debug_data()
-                self._log_info(f"✅ Enhanced update #{self.update_count} completed - {len(self.raw_data)} total keys")
+                self._log_info(f"✅ Update #{self.update_count} completed - {len(self.raw_data)} total keys")
             else:
-                self._log_warning("⚠️ No enhanced data received from any source")
+                self._log_warning("⚠️ No data received from any source")
+                # Clear raw data if no valid data received
+                self.raw_data = {}
                 
         except Exception as e:
-            self._log_error(f"❌ Enhanced update #{self.update_count} failed: {e}")
+            self._log_error(f"❌ Update #{self.update_count} failed: {e}")
+            # Clear raw data on update failure
+            self.raw_data = {}
             # Don't raise exception, just log it to keep integration running
 
     async def _fetch_device_data(self) -> Optional[Dict]:
@@ -246,14 +251,14 @@ class RestConnect:
             if not self.session:
                 await self._create_session()
             
-            # FIXED: Prepare request data for Clean/Home API
+            # Prepare request data for Clean/Home API
             request_data = {
                 "device_id": self.device_id,
                 "time_zone": 0,
                 "transaction": str(int(time.time() * 1000))
             }
             
-            self._log_debug("📡 Making enhanced device data REST API call")
+            self._log_debug("📡 Making device data REST API call")
             self._log_debug(f"🌐 URL: {self.device_data_url}")
             
             async with self.session.post(self.device_data_url, json=request_data) as response:
@@ -426,20 +431,20 @@ class RestConnect:
                 combined_data.update(runtime_dps)
                 self._log_debug(f"⏱️ Runtime data converted: {len(runtime_dps)} keys")
             
-            # STEP 5: Add mock data for testing if no real data
-            if not combined_data:
-                self._log_warning("⚠️ No real data from REST APIs, generating enhanced mock data")
-                combined_data = await self._generate_enhanced_mock_data()
+            # Return combined data (may be empty if no sources provided data)
+            if combined_data:
+                self._log_info(f"🔗 Combined data sources: {len(combined_data)} total keys")
+            else:
+                self._log_warning("⚠️ No real data from any REST API source")
             
-            self._log_info(f"🔗 Combined data sources: {len(combined_data)} total keys")
-            return combined_data
+            return combined_data if combined_data else None
             
         except Exception as e:
             self._log_error(f"❌ Error combining data sources: {e}")
             return None
 
     def _extract_dps_data(self, device_data: Dict) -> Optional[Dict]:
-        """Extract DPS data from device response - enhanced version."""
+        """Extract DPS data from device response."""
         try:
             if not isinstance(device_data, dict):
                 return None
@@ -536,85 +541,44 @@ class RestConnect:
 
     def _generate_accessory_key_180(self, accessory_data: Dict) -> str:
         """Generate realistic Key 180 data with actual accessory wear levels."""
-        import base64
-        import random
-        
         try:
             # Create 305 bytes of data
             mock_bytes = bytearray(305)
             
-            # Fill with default values
+            # Initialize with neutral values
             for i in range(305):
-                mock_bytes[i] = random.randint(50, 100)
+                mock_bytes[i] = 100  # Default to 100% (new condition)
             
             # Set specific bytes with actual wear data if available
             wear_levels = accessory_data.get('wear_levels', {})
             accessories = accessory_data.get('accessories', {})
             
-            # Map actual wear data to byte positions
+            # Map actual wear data to byte positions (based on research)
             accessory_positions = {
-                5: wear_levels.get('mop_cloth', accessories.get('mop', {}).get('wear_level', 85)),
-                37: wear_levels.get('sensors', accessories.get('sensor', {}).get('wear_level', 92)),
-                95: wear_levels.get('brush_guard', 88),
-                146: wear_levels.get('side_brush', accessories.get('side_brush', {}).get('wear_level', 76)),
-                228: wear_levels.get('filter', accessories.get('filter', {}).get('wear_level', 81)),
+                5: wear_levels.get('mop_cloth', accessories.get('mop', {}).get('wear_level')),
+                37: wear_levels.get('sensors', accessories.get('sensor', {}).get('wear_level')),
+                95: wear_levels.get('brush_guard'),
+                146: wear_levels.get('side_brush', accessories.get('side_brush', {}).get('wear_level')),
+                228: wear_levels.get('filter', accessories.get('filter', {}).get('wear_level')),
             }
             
+            # Only set bytes where we have actual data
             for pos, value in accessory_positions.items():
-                if pos < len(mock_bytes) and isinstance(value, (int, float)):
+                if pos < len(mock_bytes) and value is not None and isinstance(value, (int, float)):
                     mock_bytes[pos] = min(100, max(1, int(value)))
             
             return base64.b64encode(bytes(mock_bytes)).decode('utf-8')
             
         except Exception as e:
             self._log_debug(f"⚠️ Error generating accessory Key 180: {e}")
-            return self._generate_fallback_key_180()
-
-    def _generate_fallback_key_180(self) -> str:
-        """Generate fallback Key 180 data."""
-        import base64
-        import random
-        
-        mock_bytes = bytearray(305)
-        for i in range(305):
-            mock_bytes[i] = random.randint(70, 95)
-        
-        return base64.b64encode(bytes(mock_bytes)).decode('utf-8')
-
-    async def _generate_enhanced_mock_data(self) -> Dict:
-        """Generate enhanced mock data with realistic accessory information."""
-        import random
-        
-        # Enhanced mock data with more realistic accessory simulation
-        mock_data = {
-            "163": random.randint(20, 100),  # Battery
-            "167": "PAo6CgUIABC4AhgEGFRKJw==",  # Water tank
-            "177": "MgowCAEQABgEGlVKFw==",  # Alt water tank
-            "178": "OAo2CAEQABgEGlVlIy==",  # Real-time data
-            "168": "QWNjZXNzb3JpZXMgZGF0YSBoZXJl",  # Accessories
-            "153": random.randint(0, 8),  # Work status
-            "152": random.choice([True, False]),  # Play/pause
-            "158": random.randint(0, 3),  # Clean speed
-            "180": self._generate_fallback_key_180(),  # Enhanced accessory data
-            # NEW: Additional keys for accessory data from REST
-            "181": random.randint(60, 90),  # Brush wear from REST
-            "182": random.randint(70, 95),  # Filter wear from REST
-            "183": random.randint(65, 85),  # Mop wear from REST
-            "184": json.dumps({"total_cleans": random.randint(50, 200), "last_clean": int(time.time())}),
-            "185": json.dumps({"next_maintenance": int(time.time() + 86400 * 7)}),
-            "186": json.dumps({"cleaning_time": random.randint(3600, 7200)}),
-            "187": random.randint(50000, 100000),  # Total runtime seconds
-        }
-        
-        self._log_info("🔧 Generated enhanced mock data with accessory information")
-        return mock_data
+            return None
 
     def _log_debug_data(self):
-        """Enhanced debug logging with accessory data analysis."""
+        """Debug logging with accessory data analysis."""
         if not self.debug_logger:
             return
         
-        self._log_info("📊 ENHANCED DATA ANALYSIS")
+        self._log_info("📊 DATA ANALYSIS")
         self._log_info(f"🔢 Total DPS keys: {len(self.raw_data)}")
         self._log_info(f"📈 Update count: {self.update_count}")
         if self.last_update:
@@ -642,14 +606,14 @@ class RestConnect:
             if key in self.raw_data:
                 value = self.raw_data[key]
                 if key == '180' and isinstance(value, str):
-                    self._log_info(f"✅ Key {key}: 305-byte accessory data (enhanced)")
+                    self._log_info(f"✅ Key {key}: 305-byte accessory data")
                 else:
                     self._log_info(f"✅ Key {key}: {value}")
             else:
                 self._log_info(f"❌ Key {key}: MISSING")
         
         # Log all available keys
-        self._log_info("📋 ALL AVAILABLE KEYS (Enhanced)")
+        self._log_info("📋 ALL AVAILABLE KEYS")
         for key, value in self.raw_data.items():
             if isinstance(value, str) and len(value) > 30:
                 self._log_info(f"🔑 Key {key}: {str(value)[:15]}... (truncated)")
@@ -659,26 +623,26 @@ class RestConnect:
     async def stop_polling(self):
         """Stop polling and clean up resources."""
         try:
-            self._log_info("🛑 STOPPING ENHANCED REST CLIENT")
+            self._log_info("🛑 STOPPING REST CLIENT")
             
             self.is_connected = False
             
             if self.session and not self.session.closed:
                 await self.session.close()
-                self._log_info("✅ Enhanced HTTP session closed")
+                self._log_info("✅ HTTP session closed")
             
-            self._log_info("✅ Enhanced REST client stopped successfully")
-            self._log_info(f"📊 Total enhanced updates processed: {self.update_count}")
+            self._log_info("✅ REST client stopped successfully")
+            self._log_info(f"📊 Total updates processed: {self.update_count}")
                 
         except Exception as e:
-            self._log_error(f"❌ Error stopping enhanced REST client: {e}")
+            self._log_error(f"❌ Error stopping REST client: {e}")
 
     def get_raw_data(self) -> Dict:
-        """Get enhanced raw data for debugging."""
+        """Get raw data for debugging."""
         return self.raw_data.copy()
 
     def get_connection_info(self) -> Dict:
-        """Get enhanced connection status information."""
+        """Get connection status information."""
         return {
             'is_connected': self.is_connected,
             'last_update': self.last_update,
