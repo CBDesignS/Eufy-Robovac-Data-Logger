@@ -1,4 +1,4 @@
-"""Sensor platform for Eufy Robovac Data Logger integration."""
+"""Sensor platform for Eufy Robovac Data Logger integration - CLEANED UP VERSION."""
 import logging
 from typing import Any, Dict, Optional
 
@@ -25,19 +25,34 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Eufy X10 Debug sensors."""
+    """Set up Eufy X10 Debug sensors - CLEANED UP."""
     coordinator: EufyX10DebugCoordinator = hass.data[DOMAIN][entry.entry_id]
     
+    # Core sensors (working and reliable)
     entities = [
-        EufyX10DebugBatterySensor(coordinator),
-        EufyX10DebugWaterTankSensor(coordinator),
-        EufyX10DebugCleanSpeedSensor(coordinator),
-        EufyX10DebugWorkStatusSensor(coordinator),
-        EufyX10DebugRawDataSensor(coordinator),
-        EufyX10DebugMonitoringSensor(coordinator),
+        EufyX10DebugBatterySensor(coordinator),           # ✅ Key 163 - Working
+        EufyX10DebugCleanSpeedSensor(coordinator),        # ✅ Key 158 - Working
+        EufyX10DebugRawDataSensor(coordinator),           # ✅ Debug tool - Useful
+        EufyX10DebugMonitoringSensor(coordinator),        # ✅ Monitoring - Useful
+        EufyX10DebugAccessoryManagerSensor(coordinator),  # 🆕 Accessory config manager
     ]
     
-    _LOGGER.info("🏭 Setting up %d debug sensors for device %s", len(entities), coordinator.device_id)
+    # Add dynamic accessory sensors from JSON configuration
+    try:
+        accessory_sensors = await coordinator.accessory_manager.get_enabled_sensors()
+        
+        for sensor_id, sensor_config in accessory_sensors.items():
+            if sensor_config.get('enabled', False):
+                entities.append(EufyX10DynamicAccessorySensor(coordinator, sensor_id, sensor_config))
+                _LOGGER.debug("🔧 Added dynamic accessory sensor: %s", sensor_config.get('name'))
+        
+        _LOGGER.info("🏭 Setting up %d total sensors (%d core + %d accessories) for device %s", 
+                    len(entities), 5, len(accessory_sensors), coordinator.device_id)
+    
+    except Exception as e:
+        _LOGGER.error("❌ Failed to load accessory sensors: %s", e)
+        _LOGGER.info("🏭 Setting up %d core sensors only for device %s", len(entities), coordinator.device_id)
+    
     async_add_entities(entities)
 
 
@@ -56,7 +71,7 @@ class EufyX10DebugBaseSensor(CoordinatorEntity, SensorEntity):
             name=f"Eufy X10 Debug {self.device_id}",
             manufacturer="Eufy",
             model="X10 Pro Omni (Debug)",
-            sw_version="Debug v1.0.0",
+            sw_version="Debug v2.0.0 - Accessory Config",
         )
         
         _LOGGER.debug("🔧 Initialized %s sensor for device %s", sensor_type, self.device_id)
@@ -68,7 +83,7 @@ class EufyX10DebugBaseSensor(CoordinatorEntity, SensorEntity):
 
 
 class EufyX10DebugBatterySensor(EufyX10DebugBaseSensor):
-    """Battery sensor for debugging Key 163."""
+    """Battery sensor for debugging Key 163 - KEPT AS WORKING."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the battery sensor."""
@@ -93,7 +108,8 @@ class EufyX10DebugBatterySensor(EufyX10DebugBaseSensor):
         raw_163 = self.coordinator.raw_data.get("163")
         attrs = {
             "raw_key_163": raw_163,
-            "data_source": "Key 163",
+            "data_source": "Key 163 (Working)",
+            "reliability": "✅ 100% Accurate",
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
         }
@@ -117,76 +133,8 @@ class EufyX10DebugBatterySensor(EufyX10DebugBaseSensor):
         return attrs
 
 
-class EufyX10DebugWaterTankSensor(EufyX10DebugBaseSensor):
-    """Water tank sensor for debugging Key 167."""
-
-    def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
-        """Initialize the water tank sensor."""
-        super().__init__(coordinator, "water_tank")
-        self._attr_name = f"Eufy X10 Debug Water Tank"
-        self._attr_native_unit_of_measurement = PERCENTAGE
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_icon = "mdi:water-percent"
-
-    @property
-    def native_value(self) -> Optional[int]:
-        """Return the water tank level."""
-        water = self.coordinator.data.get("water_tank")
-        if water is not None:
-            _LOGGER.debug("💧 Water tank sensor value: %d%%", water)
-        return water
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return additional attributes."""
-        raw_167 = self.coordinator.raw_data.get("167")
-        raw_177 = self.coordinator.raw_data.get("177")
-        
-        # Decode byte 4 if available
-        byte_4_info = "N/A"
-        byte_4_hex = "N/A"
-        if raw_167 and isinstance(raw_167, str):
-            try:
-                import base64
-                binary_data = base64.b64decode(raw_167)
-                if len(binary_data) > 4:
-                    byte_4_info = f"{binary_data[4]}"
-                    byte_4_hex = f"0x{binary_data[4]:02x}"
-            except Exception as e:
-                _LOGGER.debug("⚠️ Failed to decode water tank data: %s", e)
-        
-        attrs = {
-            "raw_key_167": raw_167,
-            "raw_key_177": raw_177,
-            "byte_4_decimal": byte_4_info,
-            "byte_4_hex": byte_4_hex,
-            "data_source": "Key 167 Byte 4",
-            "calculation_method": "Scale 255->100",
-            "last_update": self.coordinator.data.get("last_update"),
-            "update_count": self.coordinator.data.get("update_count"),
-        }
-        
-        # Add tank status with emoji indicators
-        water = self.coordinator.data.get("water_tank")
-        if water is not None:
-            if water <= 10:
-                attrs["tank_status"] = "🔴 Empty"
-                attrs["tank_emoji"] = "🪣"
-            elif water <= 30:
-                attrs["tank_status"] = "🟠 Low"
-                attrs["tank_emoji"] = "💧"
-            elif water <= 70:
-                attrs["tank_status"] = "🟡 Medium"
-                attrs["tank_emoji"] = "💧"
-            else:
-                attrs["tank_status"] = "🟢 Full"
-                attrs["tank_emoji"] = "💧"
-        
-        return attrs
-
-
 class EufyX10DebugCleanSpeedSensor(EufyX10DebugBaseSensor):
-    """Clean speed sensor for debugging Key 158."""
+    """Clean speed sensor for debugging Key 158 - KEPT AS WORKING."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the clean speed sensor."""
@@ -212,7 +160,8 @@ class EufyX10DebugCleanSpeedSensor(EufyX10DebugBaseSensor):
             "raw_key_158": raw_158,
             "available_speeds": CLEAN_SPEED_NAMES,
             "speed_mapping": {i: speed for i, speed in enumerate(CLEAN_SPEED_NAMES)},
-            "data_source": "Key 158",
+            "data_source": "Key 158 (Working)",
+            "reliability": "✅ Accurate",
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
         }
@@ -231,60 +180,8 @@ class EufyX10DebugCleanSpeedSensor(EufyX10DebugBaseSensor):
         return attrs
 
 
-class EufyX10DebugWorkStatusSensor(EufyX10DebugBaseSensor):
-    """Work status sensor for debugging Key 153."""
-
-    def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
-        """Initialize the work status sensor."""
-        super().__init__(coordinator, "work_status")
-        self._attr_name = f"Eufy X10 Debug Work Status"
-        self._attr_icon = "mdi:robot-vacuum"
-
-    @property
-    def native_value(self) -> Optional[str]:
-        """Return the work status."""
-        status = self.coordinator.data.get("work_status")
-        if status is not None:
-            _LOGGER.debug("🤖 Work status sensor value: %s", status)
-        return status
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return additional attributes."""
-        raw_153 = self.coordinator.raw_data.get("153")
-        play_pause = self.coordinator.data.get("play_pause")
-        from .const import WORK_STATUS_MAP
-        
-        attrs = {
-            "raw_key_153": raw_153,
-            "raw_key_152_play_pause": self.coordinator.raw_data.get("152"),
-            "play_pause_state": "Playing" if play_pause else "Paused" if play_pause is not None else "Unknown",
-            "status_mapping": WORK_STATUS_MAP,
-            "data_source": "Key 153 (Work Status), Key 152 (Play/Pause)",
-            "last_update": self.coordinator.data.get("last_update"),
-            "update_count": self.coordinator.data.get("update_count"),
-        }
-        
-        # Add status emoji indicators
-        status = self.coordinator.data.get("work_status")
-        if status == "standby":
-            attrs["status_emoji"] = "⏸️"
-        elif status == "cleaning":
-            attrs["status_emoji"] = "🧹"
-        elif status == "charging":
-            attrs["status_emoji"] = "🔌"
-        elif status == "go_home":
-            attrs["status_emoji"] = "🏠"
-        elif status == "fault":
-            attrs["status_emoji"] = "⚠️"
-        else:
-            attrs["status_emoji"] = "🤖"
-        
-        return attrs
-
-
 class EufyX10DebugRawDataSensor(EufyX10DebugBaseSensor):
-    """Raw data sensor for complete debugging."""
+    """Raw data sensor for complete debugging - KEPT AS USEFUL."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the raw data sensor."""
@@ -308,6 +205,7 @@ class EufyX10DebugRawDataSensor(EufyX10DebugBaseSensor):
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
             "data_emoji": "📊",
+            "purpose": "Complete API data for analysis",
         }
         
         # Add first 15 characters of each raw value for debugging (prevent overflow)
@@ -321,7 +219,7 @@ class EufyX10DebugRawDataSensor(EufyX10DebugBaseSensor):
 
 
 class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
-    """Monitoring sensor showing which keys are found/missing."""
+    """Monitoring sensor showing which keys are found/missing - KEPT AS USEFUL."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the monitoring sensor."""
@@ -343,7 +241,7 @@ class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
         """Return monitoring details."""
         found_keys = self.coordinator.data.get("monitored_keys_found", [])
         missing_keys = self.coordinator.data.get("monitored_keys_missing", [])
-        coverage_pct = round((len(found_keys) / len(MONITORED_KEYS)) * 100, 1)
+        coverage_pct = round((len(found_keys) / len(MONITORED_KEYS)) * 100, 1) if MONITORED_KEYS else 0
         
         attrs = {
             "monitored_keys_total": len(MONITORED_KEYS),
@@ -354,6 +252,7 @@ class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
             "coverage_percentage": coverage_pct,
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
+            "purpose": "Track hardcoded key discovery",
         }
         
         # Add coverage emoji
@@ -368,19 +267,160 @@ class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
         for key in MONITORED_KEYS:
             status = "✅ PRESENT" if key in found_keys else "❌ MISSING"
             attrs[f"key_{key}_status"] = status
+        
+        return attrs
+
+
+class EufyX10DebugAccessoryManagerSensor(EufyX10DebugBaseSensor):
+    """NEW: Accessory configuration manager sensor."""
+
+    def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
+        """Initialize the accessory manager sensor."""
+        super().__init__(coordinator, "accessory_manager")
+        self._attr_name = f"Eufy X10 Accessory Config Manager"
+        self._attr_icon = "mdi:cog-outline"
+
+    @property
+    def native_value(self) -> str:
+        """Return number of configured accessories."""
+        accessory_count = len(self.coordinator.data.get("accessory_sensors", {}))
+        return str(accessory_count)
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return accessory manager status."""
+        accessory_sensors = self.coordinator.data.get("accessory_sensors", {})
+        
+        # Calculate status
+        enabled_count = len([a for a in accessory_sensors.values() if a.get("enabled")])
+        low_life_count = len([a for a in accessory_sensors.values() 
+                             if a.get("configured_life", 100) <= a.get("threshold", 10)])
+        
+        attrs = {
+            "total_accessories": len(accessory_sensors),
+            "enabled_accessories": enabled_count,
+            "low_life_accessories": low_life_count,
+            "config_file": "sensors.json",
+            "config_location": "/config/custom_components/Eufy-Robovac-Data-Logger/accessories/",
+            "last_update": self.coordinator.data.get("last_update"),
+            "update_count": self.coordinator.data.get("update_count"),
+            "purpose": "🔧 Manage accessory sensors from JSON config",
+        }
+        
+        # Add individual accessory status
+        for sensor_id, sensor_data in accessory_sensors.items():
+            attrs[f"{sensor_id}_life"] = f"{sensor_data.get('configured_life', 0)}%"
+            attrs[f"{sensor_id}_detected"] = sensor_data.get('detected_value', 'N/A')
+            attrs[f"{sensor_id}_enabled"] = sensor_data.get('enabled', False)
+        
+        # Status emoji
+        if low_life_count > 0:
+            attrs["status_emoji"] = "🔴"
+            attrs["status"] = f"{low_life_count} accessories need replacement"
+        elif enabled_count > 0:
+            attrs["status_emoji"] = "🟢"
+            attrs["status"] = "All accessories OK"
+        else:
+            attrs["status_emoji"] = "⚪"
+            attrs["status"] = "No accessories configured"
+        
+        return attrs
+
+
+class EufyX10DynamicAccessorySensor(EufyX10DebugBaseSensor):
+    """NEW: Dynamic accessory sensor created from JSON configuration."""
+
+    def __init__(self, coordinator: EufyX10DebugCoordinator, sensor_id: str, sensor_config: Dict[str, Any]) -> None:
+        """Initialize dynamic accessory sensor."""
+        super().__init__(coordinator, f"accessory_{sensor_id}")
+        
+        self.accessory_id = sensor_id
+        self.sensor_config = sensor_config
+        
+        self._attr_name = f"Eufy X10 {sensor_config.get('name', sensor_id)}"
+        self._attr_native_unit_of_measurement = PERCENTAGE
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_icon = self._get_accessory_icon(sensor_id)
+
+    def _get_accessory_icon(self, sensor_id: str) -> str:
+        """Get appropriate icon for accessory type."""
+        icon_map = {
+            "rolling_brush": "mdi:broom",
+            "side_brush": "mdi:brush",
+            "filter": "mdi:air-filter",
+            "mopping_cloth": "mdi:water",
+            "cleaning_tray": "mdi:tray",
+            "robovac_sensors": "mdi:radar",
+            "brush_guard": "mdi:shield-outline",
+            "water_tank_level": "mdi:water-percent",
+        }
+        return icon_map.get(sensor_id, "mdi:cog")
+
+    @property
+    def native_value(self) -> Optional[int]:
+        """Return the accessory life percentage."""
+        accessory_data = self.coordinator.data.get("accessory_sensors", {}).get(self.accessory_id, {})
+        
+        # Use detected value if available, otherwise configured value
+        detected = accessory_data.get("detected_value")
+        configured = accessory_data.get("configured_life", 100)
+        
+        value = detected if detected is not None else configured
+        
+        if value is not None:
+            _LOGGER.debug("🔧 %s sensor value: %d%%", self.sensor_config.get('name'), value)
+        
+        return value
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return accessory-specific attributes."""
+        accessory_data = self.coordinator.data.get("accessory_sensors", {}).get(self.accessory_id, {})
+        
+        attrs = {
+            "accessory_name": self.sensor_config.get('name'),
+            "description": self.sensor_config.get('description', ''),
+            "configured_life": accessory_data.get("configured_life", 100),
+            "detected_value": accessory_data.get("detected_value"),
+            "hours_remaining": accessory_data.get("hours_remaining", 0),
+            "max_hours": accessory_data.get("max_hours", 0),
+            "replacement_threshold": accessory_data.get("threshold", 10),
+            "data_source": f"Key {accessory_data.get('key')}, Byte {accessory_data.get('byte_position')}",
+            "enabled": accessory_data.get("enabled", True),
+            "notes": accessory_data.get("notes", ""),
+            "last_updated": accessory_data.get("last_updated"),
+        }
+        
+        # Status indicators
+        current_life = accessory_data.get("configured_life", 100)
+        threshold = accessory_data.get("threshold", 10)
+        
+        if current_life <= threshold:
+            attrs["status"] = "🔴 Replace Soon"
+            attrs["urgency"] = "High"
+        elif current_life <= threshold * 2:
+            attrs["status"] = "🟡 Monitor"
+            attrs["urgency"] = "Medium"
+        else:
+            attrs["status"] = "🟢 Good"
+            attrs["urgency"] = "Low"
+        
+        # Detection accuracy
+        detected = accessory_data.get("detected_value")
+        configured = accessory_data.get("configured_life", 100)
+        
+        if detected is not None:
+            difference = abs(detected - configured)
+            if difference <= 2:
+                attrs["detection_accuracy"] = "🟢 Excellent"
+            elif difference <= 5:
+                attrs["detection_accuracy"] = "🟡 Good"
+            else:
+                attrs["detection_accuracy"] = "🔴 Needs calibration"
             
-            # Add description for important keys
-            key_descriptions = {
-                "163": "🔋 Battery Level",
-                "167": "💧 Water Tank Level (Byte 4)",
-                "177": "🌊 Alternative Water Tank Source",
-                "178": "⚡ Real-time Data",
-                "168": "🔧 Accessories Status",
-                "153": "🤖 Work Status/Mode",
-                "152": "⏯️ Play/Pause Commands",
-                "158": "⚡ Clean Speed Settings",
-            }
-            if key in key_descriptions:
-                attrs[f"key_{key}_description"] = key_descriptions[key]
+            attrs["detection_difference"] = f"{difference}%"
+        else:
+            attrs["detection_accuracy"] = "⚪ Not detected"
+            attrs["detection_difference"] = "N/A"
         
         return attrs
