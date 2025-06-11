@@ -1,6 +1,7 @@
 """
 Accessory Configuration Manager for Eufy Robovac Data Logger integration.
 Manages user-editable JSON configuration files for accessory sensors and discovery settings.
+HANDS-OFF APPROACH: Write once on first setup, then never modify user's file.
 """
 
 import asyncio
@@ -17,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 class AccessoryConfigManager:
     """
     Manages accessory sensor configuration through user-editable JSON files.
-    Handles loading, saving, and updating accessory life percentages and discovery settings.
+    WRITE ONCE, READ MANY: Only creates defaults on first setup, then hands-off.
     """
     
     def __init__(self, integration_dir: str, device_id: str):
@@ -45,9 +46,10 @@ class AccessoryConfigManager:
         _LOGGER.info("📂 Config file: %s", self.config_file)
 
     async def ensure_default_config(self) -> None:
-        """Create default configuration file if it doesn't exist."""
+        """Create default configuration ONLY if file doesn't exist (first time setup)."""
         if not self.config_file.exists():
-            _LOGGER.info("📝 Creating default accessory configuration file")
+            _LOGGER.info("📝 Creating default accessory configuration (FIRST TIME SETUP)")
+            _LOGGER.info("🏠 This file will be hands-off after creation - user controls it completely")
             
             default_config = {
                 "device_info": {
@@ -83,8 +85,8 @@ class AccessoryConfigManager:
                         "last_updated": datetime.now().isoformat(),
                         "notes": "Replace when bent or missing bristles"
                     },
-                    "hepa_filter": {
-                        "name": "HEPA Filter",
+                    "dust_filter": {
+                        "name": "Dust Filter",
                         "description": "Air filtration system - captures fine dust and allergens",
                         "key": "180",
                         "byte_position": 228,
@@ -141,19 +143,46 @@ class AccessoryConfigManager:
                     "maintenance_reminder_days": [7, 3, 1]
                 },
                 "user_notes": [
-                    "Edit this file to customize your accessory monitoring",
-                    "Set 'enabled': false to disable specific accessory tracking",
-                    "Adjust 'replacement_threshold' to change when low-life alerts trigger",
-                    "Add new accessories by copying the structure of existing ones",
-                    "Restart the integration after making changes"
+                    "=== HANDS-OFF USER CONFIGURATION ===",
+                    "",
+                    "🏠 This file is now YOURS to manage:",
+                    "  • Edit accessory life percentages as they wear down",
+                    "  • Add/remove accessories as needed",
+                    "  • Modify thresholds and settings",
+                    "  • The integration will NEVER overwrite your changes",
+                    "",
+                    "📝 EDITING INSTRUCTIONS:",
+                    "  • Update 'current_life_remaining' percentages as accessories wear down",
+                    "  • Set 'enabled': false to disable tracking for specific accessories",
+                    "  • Adjust 'replacement_threshold' to change when low-life alerts trigger",
+                    "  • Add notes about replacement dates or maintenance performed",
+                    "",
+                    "🔄 AFTER EDITING:",
+                    "  • Restart the Home Assistant integration to load new values",
+                    "  • Check the debug logs for accessory change detection",
+                    "  • Monitor sensor entities for updated values",
+                    "",
+                    "⚠️ INTEGRATION UPDATES:",
+                    "  • This file will NEVER be modified by integration updates",
+                    "  • You have complete control - add/remove sensors as desired",
+                    "  • New default sensors (if any) won't be auto-added",
+                    "",
+                    "💡 PRO TIPS:",
+                    "  • Keep a maintenance log in the 'notes' field",
+                    "  • Use realistic wear rates based on actual cleaning frequency",
+                    "  • Set calendar reminders based on 'hours_remaining'",
+                    "  • Compare multiple cleaning sessions to confirm sensor locations"
                 ]
             }
             
             await self.save_config(default_config, create_backup=False)
-            _LOGGER.info("✅ Default configuration created successfully")
+            _LOGGER.info("✅ Default configuration created - now under user control")
+        else:
+            _LOGGER.info("📁 Using existing user configuration (hands-off mode)")
+            _LOGGER.info("🔒 File exists - integration will not modify user's settings")
 
     async def load_config(self, force_reload: bool = False) -> Dict[str, Any]:
-        """Load accessory configuration from JSON file."""
+        """Load accessory configuration from JSON file - HANDS-OFF approach."""
         async with self._file_lock:
             current_time = datetime.now().timestamp()
             
@@ -165,10 +194,10 @@ class AccessoryConfigManager:
                 return self._config_cache.copy()
             
             try:
-                # Ensure default config exists
+                # Ensure config exists (first time setup only)
                 await self.ensure_default_config()
                 
-                # Load from file
+                # Load from file AS-IS (no modifications)
                 async with aiofiles.open(self.config_file, 'r', encoding='utf-8') as f:
                     content = await f.read()
                     config = json.loads(content)
@@ -177,16 +206,17 @@ class AccessoryConfigManager:
                 self._config_cache = config.copy()
                 self._last_loaded = current_time
                 
-                _LOGGER.debug("📖 Configuration loaded successfully")
+                _LOGGER.debug("📖 User configuration loaded successfully (hands-off)")
                 return config
                 
             except FileNotFoundError:
                 _LOGGER.error("❌ Configuration file not found: %s", self.config_file)
+                # Try to create default and reload
                 await self.ensure_default_config()
                 return await self.load_config(force_reload=True)
                 
             except json.JSONDecodeError as e:
-                _LOGGER.error("❌ Invalid JSON in config file: %s", e)
+                _LOGGER.error("❌ Invalid JSON in user config file: %s", e)
                 # Try to restore from backup
                 if self.backup_file.exists():
                     _LOGGER.info("🔄 Attempting to restore from backup")
@@ -204,7 +234,7 @@ class AccessoryConfigManager:
                         _LOGGER.error("❌ Backup restore failed: %s", backup_error)
                 
                 # Last resort: create new default config
-                _LOGGER.warning("⚠️ Creating new default configuration")
+                _LOGGER.warning("⚠️ Creating new default configuration due to corruption")
                 await self.ensure_default_config()
                 return await self.load_config(force_reload=True)
                 
@@ -216,8 +246,9 @@ class AccessoryConfigManager:
         """Save accessory configuration to JSON file."""
         async with self._file_lock:
             try:
-                # Update metadata
-                config["device_info"]["last_updated"] = datetime.now().isoformat()
+                # Update metadata (only touch metadata, not user data)
+                if "device_info" in config:
+                    config["device_info"]["last_updated"] = datetime.now().isoformat()
                 
                 # Create backup if enabled and requested
                 if create_backup and self.config_file.exists():
@@ -253,7 +284,7 @@ class AccessoryConfigManager:
             config = await self.load_config()
             
             if accessory_id not in config.get("accessory_sensors", {}):
-                _LOGGER.warning("⚠️ Accessory '%s' not found in configuration", accessory_id)
+                _LOGGER.warning("⚠️ Accessory '%s' not found in user configuration", accessory_id)
                 return False
             
             # Update the accessory
@@ -281,55 +312,8 @@ class AccessoryConfigManager:
             _LOGGER.error("❌ Error updating accessory life: %s", e)
             return False
 
-    async def add_discovered_sensor(self, key: str, byte_position: int, 
-                                   name: str, description: str = "") -> bool:
-        """Add a newly discovered sensor to the configuration."""
-        try:
-            config = await self.load_config()
-            
-            # Generate unique ID for the sensor
-            sensor_id = f"discovered_{key}_{byte_position}"
-            
-            # Check if already exists
-            if sensor_id in config.get("accessory_sensors", {}):
-                _LOGGER.debug("🔍 Sensor %s already exists in configuration", sensor_id)
-                return False
-            
-            # Add new sensor
-            new_sensor = {
-                "name": name,
-                "description": description or f"Auto-discovered sensor in key {key}",
-                "key": key,
-                "byte_position": byte_position,
-                "current_life_remaining": 100,
-                "max_life_hours": 300,
-                "replacement_threshold": 10,
-                "enabled": True,
-                "auto_update": True,
-                "last_updated": datetime.now().isoformat(),
-                "notes": f"Auto-discovered on {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                "discovered": True
-            }
-            
-            config["accessory_sensors"][sensor_id] = new_sensor
-            
-            # Save updated config
-            success = await self.save_config(config)
-            
-            if success:
-                _LOGGER.info("🎯 Added discovered sensor: %s (Key %s, Byte %d)", 
-                           name, key, byte_position)
-                return True
-            else:
-                _LOGGER.error("❌ Failed to save discovered sensor")
-                return False
-                
-        except Exception as e:
-            _LOGGER.error("❌ Error adding discovered sensor: %s", e)
-            return False
-
     async def get_enabled_sensors(self) -> Dict[str, Dict[str, Any]]:
-        """Get all enabled accessory sensors from configuration."""
+        """Get all enabled accessory sensors from user configuration."""
         try:
             config = await self.load_config()
             enabled_sensors = {}
@@ -338,7 +322,7 @@ class AccessoryConfigManager:
                 if sensor_config.get("enabled", False):
                     enabled_sensors[sensor_id] = sensor_config.copy()
             
-            _LOGGER.debug("📋 Found %d enabled sensors", len(enabled_sensors))
+            _LOGGER.debug("📋 Found %d enabled sensors in user config", len(enabled_sensors))
             return enabled_sensors
             
         except Exception as e:
@@ -346,23 +330,21 @@ class AccessoryConfigManager:
             return {}
 
     async def get_discovery_settings(self) -> Dict[str, Any]:
-        """Get discovery settings from configuration."""
+        """Get discovery settings from user configuration."""
         try:
             config = await self.load_config()
             discovery_settings = config.get("discovery_settings", {})
             
-            # Set defaults if missing
-            defaults = {
-                "enabled_for_discovery": ["181", "182", "183", "184", "185"],
-                "auto_add_found_sensors": True,
-                "stop_searching_after_found": True,
-                "discovery_timeout_seconds": 300,
-                "min_updates_before_stop": 5
-            }
-            
-            for key, default_value in defaults.items():
-                if key not in discovery_settings:
-                    discovery_settings[key] = default_value
+            # Only set defaults if the section is completely missing
+            if not discovery_settings:
+                defaults = {
+                    "enabled_for_discovery": ["181", "182", "183", "184", "185"],
+                    "auto_add_found_sensors": False,  # Default to False for hands-off
+                    "stop_searching_after_found": True,
+                    "discovery_timeout_seconds": 300,
+                    "min_updates_before_stop": 5
+                }
+                return defaults
             
             return discovery_settings
             
@@ -425,14 +407,14 @@ class AccessoryConfigManager:
         return str(self.config_file.absolute())
 
     async def validate_config(self) -> Dict[str, Any]:
-        """Validate the current configuration and return validation results."""
+        """Validate the user configuration and return validation results."""
         try:
             config = await self.load_config()
             issues = []
             warnings = []
             
             # Check required sections
-            required_sections = ["device_info", "accessory_sensors", "discovery_settings"]
+            required_sections = ["device_info", "accessory_sensors"]
             for section in required_sections:
                 if section not in config:
                     issues.append(f"Missing required section: {section}")
@@ -455,7 +437,8 @@ class AccessoryConfigManager:
                 "warnings": warnings,
                 "total_sensors": len(config.get("accessory_sensors", {})),
                 "enabled_sensors": len([s for s in config.get("accessory_sensors", {}).values() 
-                                      if s.get("enabled", False)])
+                                      if s.get("enabled", False)]),
+                "user_controlled": True
             }
             
         except Exception as e:
@@ -464,5 +447,6 @@ class AccessoryConfigManager:
                 "issues": [f"Configuration validation error: {e}"],
                 "warnings": [],
                 "total_sensors": 0,
-                "enabled_sensors": 0
+                "enabled_sensors": 0,
+                "user_controlled": False
             }
