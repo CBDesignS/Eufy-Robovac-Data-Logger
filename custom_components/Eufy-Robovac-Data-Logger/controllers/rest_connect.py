@@ -1,14 +1,152 @@
-async def updateDevice(self, force_update: bool = False):
+"""RestConnect controller for Eufy Robovac Data Logger integration."""
+import asyncio
+import logging
+import time
+import aiohttp
+from typing import Any, Dict, Optional
+
+from .base import Base
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class RestConnect(Base):
+    """RestConnect client with fallback to basic login when REST endpoints unavailable."""
+
+    def __init__(self, config: Dict, openudid: str, eufyCleanApi):
+        """Initialize RestConnect client."""
+        super().__init__()
+        
+        self.device_id = config.get('deviceId')
+        self.device_model = config.get('deviceModel', 'T8213')
+        self.debug_mode = config.get('debug', False)
+        self.openudid = openudid
+        self.eufyCleanApi = eufyCleanApi
+        
+        # Connection state
+        self.is_connected = False
+        self.session = None
+        self.raw_data = {}
+        self.last_update = None
+        self.update_count = 0
+        
+        # Debug logger reference (set by coordinator)
+        self.debug_logger = None
+        self._detailed_logging_enabled = False
+        
+        # REST API endpoints (may not be available)
+        self.api_endpoints = {
+            'device_data': 'https://api.eufylife.com/v1/device/info',
+            'device_status': 'https://api.eufylife.com/v1/device/status',
+            'accessory_data': 'https://api.eufylife.com/v1/device/accessory_info',
+            'consumable_data': 'https://api.eufylife.com/v1/device/consumable_status',
+            'runtime_data': 'https://api.eufylife.com/v1/device/runtime_info',
+            'clean_device_info': 'https://aiot-clean-api-pr.eufylife.com/app/device/get_device_info',
+            'clean_accessory': 'https://aiot-clean-api-pr.eufylife.com/app/device/get_accessory_data',
+        }
+        
+        # Track which endpoints are working
+        self.working_endpoints = set()
+        self.failed_endpoints = set()
+
+    async def connect(self):
+        """Connect to REST API endpoints with fallback detection."""
+        try:
+            # Create HTTP session
+            self.session = aiohttp.ClientSession()
+            
+            # Test REST endpoint availability
+            rest_available = await self._test_rest_endpoints()
+            
+            if rest_available:
+                self.is_connected = True
+                self._log_info("✅ RestConnect: Connected to REST API endpoints")
+            else:
+                self.is_connected = False
+                self._log_warning("⚠️ RestConnect: REST endpoints not available, will use fallback")
+                
+        except Exception as e:
+            self.is_connected = False
+            self._log_error(f"❌ RestConnect connection failed: {e}")
+
+    async def _test_rest_endpoints(self) -> bool:
+        """Test if REST endpoints are available."""
+        try:
+            # Test a simple endpoint to see if REST is working
+            test_url = self.api_endpoints.get('device_data')
+            
+            if not test_url:
+                return False
+            
+            # Get auth headers
+            headers = await self._get_auth_headers()
+            if not headers:
+                return False
+            
+            # Make a test request
+            async with self.session.get(test_url, headers=headers, timeout=5) as response:
+                if response.status in [200, 401, 403]:  # Any response means endpoint exists
+                    self.working_endpoints.add('device_data')
+                    self._log_debug("✅ REST endpoints responding")
+                    return True
+                else:
+                    self.failed_endpoints.add('device_data')
+                    return False
+                    
+        except Exception as e:
+            self._log_debug(f"REST endpoint test failed: {e}")
+            return False
+
+    async def _get_auth_headers(self) -> Optional[Dict[str, str]]:
+        """Get authentication headers for REST API calls."""
+        try:
+            if not self.eufyCleanApi or not hasattr(self.eufyCleanApi, 'eufyApi'):
+                return None
+            
+            eufy_api = self.eufyCleanApi.eufyApi
+            
+            # Get tokens from the API
+            if hasattr(eufy_api, 'session') and eufy_api.session:
+                access_token = eufy_api.session.get('access_token')
+            else:
+                return None
+            
+            if hasattr(eufy_api, 'user_info') and eufy_api.user_info:
+                user_center_token = eufy_api.user_info.get('user_center_token')
+                gtoken = eufy_api.user_info.get('gtoken')
+            else:
+                return None
+            
+            if not all([access_token, user_center_token, gtoken]):
+                return None
+            
+            # Return headers for REST API calls
+            return {
+                'user-agent': 'EufyHome-Android-3.1.3-753',
+                'openudid': self.openudid,
+                'os-version': 'Android',
+                'model-type': 'PHONE',
+                'app-name': 'eufy_home',
+                'x-auth-token': user_center_token,
+                'gtoken': gtoken,
+                'content-type': 'application/json; charset=UTF-8',
+                'token': access_token,
+                'category': 'Home',
+                'clienttype': '2',
+            }
+            
+        except Exception as e:
+            self._log_debug(f"Failed to get auth headers: {e}")
+            return None
+
+    async def updateDevice(self, force_update: bool = False):
         """
-        Production device data update from multiple REST API sources.
-        Combines traditional DPS data with new accessory/consumable data from REST endpoints.
-        REDUCED LOGGING: Only log REST attempts during detailed logging periods.
+        Update device data - SIMPLIFIED VERSION with minimal logging.
+        Only logs during detailed periods (every 10 minutes).
         """
         try:
             if not self.is_connected and not force_update:
-                # Only log this during detailed periods
-                if self.debug_logger and hasattr(self.debug_logger, '_should_log_detailed'):
-                    self._log_warning("⚠️ Not connected, skipping update")
+                # Silently fail if not connected (no logging spam)
                 return
             
             self.update_count += 1
@@ -17,78 +155,72 @@ async def updateDevice(self, force_update: bool = False):
             detailed_logging = self._should_log_detailed()
             
             if detailed_logging:
-                self._log_info(f"🔄 UPDATE #{self.update_count} STARTING")
+                self._log_info(f"🔄 RestConnect UPDATE #{self.update_count} STARTING")
             
-            # STEP 1: Get traditional device data (DPS-style)
+            # Try to fetch data from REST endpoints
             device_data = await self._fetch_device_data(detailed_logging)
             
-            # STEP 2-4: Only try REST endpoints during detailed logging
-            accessory_data = None
-            consumable_data = None  
-            runtime_data = None
-            
-            if detailed_logging:
-                # Get enhanced accessory data from REST endpoints
-                accessory_data = await self._fetch_accessory_data()
-                # Get consumable/wear data from new REST endpoints  
-                consumable_data = await self._fetch_consumable_data()
-                # Get runtime/usage data
-                runtime_data = await self._fetch_runtime_data()
-            
-            # STEP 5: Combine all data sources
-            combined_data = await self._combine_data_sources(
-                device_data, accessory_data, consumable_data, runtime_data, detailed_logging
-            )
-            
-            if combined_data:
-                self.raw_data = combined_data
-                self.last_update = time.time()
+            if device_data:
+                # Extract DPS-like data from REST response
+                combined_data = self._extract_dps_data(device_data)
                 
-                if detailed_logging:
-                    self._log_debug_data()
-                    self._log_info(f"✅ Update #{self.update_count} completed - {len(self.raw_data)} total keys")
+                if combined_data:
+                    self.raw_data = combined_data
+                    self.last_update = time.time()
+                    
+                    if detailed_logging:
+                        self._log_info(f"✅ RestConnect update #{self.update_count} completed - {len(self.raw_data)} keys")
+                else:
+                    if detailed_logging:
+                        self._log_warning("⚠️ No DPS data extracted from REST response")
+                    self.raw_data = {}
             else:
                 if detailed_logging:
-                    self._log_warning("⚠️ No data received from any source")
-                # Clear raw data if no valid data received
+                    self._log_warning("⚠️ No data received from REST endpoints")
                 self.raw_data = {}
                 
         except Exception as e:
-            # Always log errors
-            self._log_error(f"❌ Update #{self.update_count} failed: {e}")
+            # Only log errors during detailed periods or if critical
+            if detailed_logging:
+                self._log_error(f"❌ RestConnect update #{self.update_count} failed: {e}")
             # Clear raw data on update failure
             self.raw_data = {}
-            # Don't raise exception, just log it to keep integration running
 
     def _should_log_detailed(self) -> bool:
-        """Check if we should do detailed logging (every 10 minutes)."""
-        # This will be set by the coordinator
-        if hasattr(self, '_detailed_logging_enabled'):
-            return self._detailed_logging_enabled
-        return False
+        """Check if we should do detailed logging (controlled by coordinator)."""
+        return getattr(self, '_detailed_logging_enabled', False)
 
     async def _fetch_device_data(self, detailed_logging: bool = False) -> Optional[Dict]:
-        """Fetch traditional device data (DPS-style) from REST API endpoint."""
+        """Fetch device data from REST API endpoint."""
         try:
             if not self.session:
-                await self._create_session()
+                return None
             
-            # Prepare request data for Clean/Home API
+            headers = await self._get_auth_headers()
+            if not headers:
+                if detailed_logging:
+                    self._log_debug("No auth headers available for REST call")
+                return None
+            
+            # Try device data endpoint
             request_data = {
                 "device_id": self.device_id,
                 "time_zone": 0,
-                "transaction": str(int(time.time() * 1000))
+                "timestamp": int(time.time() * 1000)
             }
             
             if detailed_logging:
-                self._log_debug("📡 Making device data REST API call")
-                self._log_debug(f"🌐 URL: {self.device_data_url}")
+                self._log_debug("📡 Making REST API call to device endpoint")
             
-            async with self.session.post(self.device_data_url, json=request_data) as response:
+            device_url = self.api_endpoints.get('device_data')
+            if not device_url:
+                return None
+            
+            async with self.session.post(device_url, json=request_data, headers=headers, timeout=10) as response:
                 if response.status == 200:
                     response_data = await response.json()
                     if detailed_logging:
-                        self._log_debug("✅ Device data REST API call successful")
+                        self._log_debug("✅ REST API call successful")
                     return response_data
                 else:
                     # Try alternative endpoint
@@ -96,12 +228,16 @@ async def updateDevice(self, force_update: bool = False):
                     
         except Exception as e:
             if detailed_logging:
-                self._log_error(f"❌ Device data REST API request failed: {e}")
+                self._log_debug(f"REST API request failed: {e}")
             return None
 
     async def _fetch_device_data_alternative(self, detailed_logging: bool = False) -> Optional[Dict]:
         """Fetch device data from alternative Clean API endpoint."""
         try:
+            headers = await self._get_auth_headers()
+            if not headers:
+                return None
+            
             request_data = {
                 "device_sn": self.device_id,
                 "attribute": 3,
@@ -110,170 +246,128 @@ async def updateDevice(self, force_update: bool = False):
             
             if detailed_logging:
                 self._log_debug("📡 Trying alternative Clean API endpoint")
-                self._log_debug(f"🌐 URL: {self.clean_device_info_url}")
             
-            async with self.session.post(self.clean_device_info_url, json=request_data) as response:
+            clean_url = self.api_endpoints.get('clean_device_info')
+            if not clean_url:
+                return None
+            
+            async with self.session.post(clean_url, json=request_data, headers=headers, timeout=10) as response:
                 if response.status == 200:
                     response_data = await response.json()
                     if detailed_logging:
-                        self._log_debug("✅ Alternative device data API call successful")
+                        self._log_debug("✅ Alternative REST API call successful")
                     return response_data
                 else:
                     if detailed_logging:
-                        error_text = await response.text()
-                        self._log_debug(f"⚠️ Alternative API call failed: {response.status} - {error_text}")
+                        self._log_debug(f"Alternative API call failed: {response.status}")
                     return None
                     
         except Exception as e:
             if detailed_logging:
-                self._log_error(f"❌ Alternative device data request failed: {e}")
+                self._log_debug(f"Alternative REST request failed: {e}")
             return None
 
-    async def _fetch_accessory_data(self) -> Optional[Dict]:
-        """Fetch accessory/consumable data from new REST endpoints (moved from MQTT)."""
+    def _extract_dps_data(self, response_data: Dict) -> Dict[str, Any]:
+        """Extract DPS-like data from REST API response."""
         try:
-            self._log_debug("🔧 Fetching accessory data from REST endpoint")
+            # Look for DPS data in various response formats
+            dps_data = {}
             
-            request_data = {
-                "device_id": self.device_id,
-                "data_type": "accessory_status",
-                "include_wear_data": True,
-                "timestamp": int(time.time() * 1000)
-            }
+            # Format 1: Direct DPS in response
+            if 'dps' in response_data:
+                dps_data.update(response_data['dps'])
             
-            async with self.session.post(self.accessory_data_url, json=request_data) as response:
-                if response.status == 200:
-                    accessory_data = await response.json()
-                    self._log_debug("✅ Accessory data retrieved from REST endpoint")
-                    return accessory_data
-                else:
-                    # Try alternative Clean API endpoint for accessory data
-                    return await self._fetch_accessory_data_alternative()
-                    
+            # Format 2: Device data with DPS
+            if 'data' in response_data and isinstance(response_data['data'], dict):
+                data_section = response_data['data']
+                if 'dps' in data_section:
+                    dps_data.update(data_section['dps'])
+                
+                # Also check for device in data
+                if 'device' in data_section and 'dps' in data_section['device']:
+                    dps_data.update(data_section['device']['dps'])
+            
+            # Format 3: Devices array
+            if 'devices' in response_data and isinstance(response_data['devices'], list):
+                for device in response_data['devices']:
+                    if isinstance(device, dict) and device.get('device_sn') == self.device_id:
+                        if 'dps' in device:
+                            dps_data.update(device['dps'])
+                        break
+            
+            return dps_data
+            
         except Exception as e:
-            self._log_debug(f"⚠️ Accessory data REST request failed: {e}")
-            return None
+            self._log_debug(f"Error extracting DPS data: {e}")
+            return {}
 
-    async def _fetch_accessory_data_alternative(self) -> Optional[Dict]:
-        """Fetch accessory data from Clean API endpoint."""
-        try:
-            request_data = {
-                "device_sn": self.device_id,
-                "accessory_types": ["brush", "filter", "mop", "sensor"],
-                "include_usage": True
-            }
-            
-            self._log_debug("🔧 Trying alternative Clean API for accessory data")
-            
-            async with self.session.post(self.clean_accessory_url, json=request_data) as response:
-                if response.status == 200:
-                    accessory_data = await response.json()
-                    self._log_debug("✅ Alternative accessory data retrieved")
-                    return accessory_data
-                else:
-                    self._log_debug(f"⚠️ Alternative accessory API failed: {response.status}")
-                    return None
-                    
-        except Exception as e:
-            self._log_debug(f"⚠️ Alternative accessory request failed: {e}")
-            return None
+    def get_raw_data(self) -> Dict[str, Any]:
+        """Get the current raw data."""
+        return self.raw_data.copy()
 
-    async def _fetch_consumable_data(self) -> Optional[Dict]:
-        """Fetch consumable/wear level data from REST endpoints."""
-        try:
-            self._log_debug("🧽 Fetching consumable wear data from REST endpoint")
-            
-            request_data = {
-                "device_id": self.device_id,
-                "consumable_types": ["all"],
-                "usage_data": True,
-                "wear_levels": True
-            }
-            
-            async with self.session.post(self.consumable_data_url, json=request_data) as response:
-                if response.status == 200:
-                    consumable_data = await response.json()
-                    self._log_debug("✅ Consumable wear data retrieved from REST endpoint")
-                    return consumable_data
-                else:
-                    self._log_debug(f"⚠️ Consumable data API call failed: {response.status}")
-                    return None
-                    
-        except Exception as e:
-            self._log_debug(f"⚠️ Consumable data request failed: {e}")
-            return None
+    def get_connection_info(self) -> Dict[str, Any]:
+        """Get connection information."""
+        return {
+            'is_connected': self.is_connected,
+            'last_update': self.last_update,
+            'update_count': self.update_count,
+            'keys_received': len(self.raw_data),
+            'device_id': self.device_id,
+            'device_model': self.device_model,
+            'working_endpoints': list(self.working_endpoints),
+            'failed_endpoints': list(self.failed_endpoints),
+            'has_session': self.session is not None,
+            'has_auth_token': hasattr(self.eufyCleanApi, 'eufyApi') and 
+                             hasattr(self.eufyCleanApi.eufyApi, 'session') and
+                             self.eufyCleanApi.eufyApi.session is not None,
+            'has_user_center_token': hasattr(self.eufyCleanApi, 'eufyApi') and 
+                                   hasattr(self.eufyCleanApi.eufyApi, 'user_info') and
+                                   self.eufyCleanApi.eufyApi.user_info is not None,
+            'has_gtoken': hasattr(self.eufyCleanApi, 'eufyApi') and 
+                         hasattr(self.eufyCleanApi.eufyApi, 'user_info') and
+                         self.eufyCleanApi.eufyApi.user_info is not None and
+                         'gtoken' in self.eufyCleanApi.eufyApi.user_info,
+            'api_endpoints_available': {endpoint: endpoint in self.working_endpoints 
+                                      for endpoint in self.api_endpoints.keys()},
+        }
 
-    async def _fetch_runtime_data(self) -> Optional[Dict]:
-        """Fetch runtime/usage statistics from REST endpoints."""
+    async def stop_polling(self):
+        """Stop polling and cleanup."""
         try:
-            self._log_debug("⏱️ Fetching runtime data from REST endpoint")
+            if self.session and not self.session.closed:
+                await self.session.close()
+                self.session = None
             
-            request_data = {
-                "device_id": self.device_id,
-                "runtime_types": ["cleaning", "accessories", "maintenance"],
-                "period": "all"
-            }
+            self.is_connected = False
+            self._log_debug("RestConnect polling stopped")
             
-            async with self.session.post(self.runtime_data_url, json=request_data) as response:
-                if response.status == 200:
-                    runtime_data = await response.json()
-                    self._log_debug("✅ Runtime data retrieved from REST endpoint")
-                    return runtime_data
-                else:
-                    self._log_debug(f"⚠️ Runtime data API call failed: {response.status}")
-                    return None
-                    
         except Exception as e:
-            self._log_debug(f"⚠️ Runtime data request failed: {e}")
-            return None
+            self._log_error(f"Error stopping RestConnect polling: {e}")
 
-    async def _combine_data_sources(self, device_data: Optional[Dict], 
-                                   accessory_data: Optional[Dict],
-                                   consumable_data: Optional[Dict], 
-                                   runtime_data: Optional[Dict],
-                                   detailed_logging: bool = False) -> Optional[Dict]:
-        """Combine data from multiple REST API sources into unified DPS-like format."""
-        try:
-            combined_data = {}
-            
-            # STEP 1: Extract traditional DPS data
-            if device_data:
-                dps_data = self._extract_dps_data(device_data)
-                if dps_data:
-                    combined_data.update(dps_data)
-                    if detailed_logging:
-                        self._log_debug(f"📊 Traditional DPS data: {len(dps_data)} keys")
-            
-            # STEP 2-4: Only process REST data if we have it (detailed logging periods)
-            if accessory_data:
-                accessory_dps = self._convert_accessory_to_dps(accessory_data)
-                combined_data.update(accessory_dps)
-                if detailed_logging:
-                    self._log_debug(f"🔧 Accessory data converted: {len(accessory_dps)} keys")
-            
-            if consumable_data:
-                consumable_dps = self._convert_consumable_to_dps(consumable_data)
-                combined_data.update(consumable_dps)
-                if detailed_logging:
-                    self._log_debug(f"🧽 Consumable data converted: {len(consumable_dps)} keys")
-            
-            if runtime_data:
-                runtime_dps = self._convert_runtime_to_dps(runtime_data)
-                combined_data.update(runtime_dps)
-                if detailed_logging:
-                    self._log_debug(f"⏱️ Runtime data converted: {len(runtime_dps)} keys")
-            
-            # Return combined data (may be empty if no sources provided data)
-            if combined_data:
-                if detailed_logging:
-                    self._log_info(f"🔗 Combined data sources: {len(combined_data)} total keys")
-            else:
-                if detailed_logging:
-                    self._log_warning("⚠️ No real data from any REST API source")
-            
-            return combined_data if combined_data else None
-            
-        except Exception as e:
-            if detailed_logging:
-                self._log_error(f"❌ Error combining data sources: {e}")
-            return None
+    def _log_info(self, message: str):
+        """Log info level message."""
+        if self.debug_logger:
+            self.debug_logger.info(message)
+        elif self.debug_mode:
+            _LOGGER.info("[RestConnect] %s", message)
+
+    def _log_debug(self, message: str):
+        """Log debug level message."""
+        if self.debug_logger:
+            self.debug_logger.debug(message)
+        elif self.debug_mode:
+            _LOGGER.debug("[RestConnect] %s", message)
+
+    def _log_warning(self, message: str):
+        """Log warning level message."""
+        if self.debug_logger:
+            self.debug_logger.warning(message)
+        elif self.debug_mode:
+            _LOGGER.warning("[RestConnect] %s", message)
+
+    def _log_error(self, message: str):
+        """Log error level message."""
+        if self.debug_logger:
+            self.debug_logger.error(message)
+        else:
+            _LOGGER.error("[RestConnect] %s", message)
