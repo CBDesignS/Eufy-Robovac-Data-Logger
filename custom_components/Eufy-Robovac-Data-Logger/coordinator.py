@@ -653,4 +653,24 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 if hasattr(self._eufy_login.eufyApi, 'close'):
                     await self._eufy_login.eufyApi.close()
                 self._debug_log("✅ Eufy API connection closed", "info", force=True)
-            
+            except Exception as e:
+                self._debug_log(f"❌ Error closing Eufy API: {e}", "error", force=True)
+        
+        self._debug_log(f"📊 Final statistics: {self.update_count} updates processed", "info", force=True)
+        if self._last_successful_update:
+            self._debug_log(f"✅ Last successful update: {time.ctime(self._last_successful_update)}", "info", force=True)
+        
+        accessories_tracked = len(self.accessory_sensors)
+        self._debug_log(f"🔧 Accessory sensors tracked: {accessories_tracked}", "info", force=True)
+        
+        # Log final RestConnect statistics
+        if self._rest_client:
+            rest_info = self.get_rest_connection_info()
+            self._debug_log(f"🌐 RestConnect final status: {rest_info.get('keys_received', 0)} keys received", "info", force=True)
+        
+        # Stop the async debug logger
+        if self.debug_logger:
+            await self.debug_logger.stop()
+        
+        self._debug_log("🏁 Coordinator shutdown complete with RestConnect", "info", force=True)
+                    
