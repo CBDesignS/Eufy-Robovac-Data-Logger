@@ -59,7 +59,7 @@ class AsyncEufyDebugLogger:
             "=" * 80,
             "🎯 DEBUGGING MISSION:",
             "  - Hunt for accessory sensor data bytes",
-            "  - Match Android app usage levels",
+            "  - Match Android app usage levels that are configured in your /accessories/sensors_DEVICEID.json file",
             "  - Find: rolling brush, filter, side brush, mop cloth sensors",
             "  - Test: run room clean → dock → check accessory changes",
             "=" * 80
