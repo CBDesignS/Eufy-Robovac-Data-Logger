@@ -41,6 +41,11 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.last_detailed_log = 0
         self.first_few_updates = 1  # Only log first update in detail
         
+        # CHANGE DETECTION - only log when something changes
+        self._last_logged_status = None  # Track last logged status to avoid spam
+        self._quiet_updates_count = 0    # Count updates with no changes
+        self._quiet_log_interval = 60    # Log "still alive" every 60 quiet updates (10 minutes at 10s intervals)
+        
         # Connection tracking
         self._eufy_login = None
         self._rest_client = None
@@ -215,22 +220,40 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("[DEBUG] %s", message)
 
     def _log_brief_status(self):
-        """Log a brief status update (used for non-detailed updates)."""
-        if self.debug_logger:
-            battery = self.parsed_data.get('battery', 'N/A')
-            clean_speed = self.parsed_data.get('clean_speed', 'N/A')
-            keys_found = len(self.parsed_data.get('monitored_keys_found', []))
-            total_keys = len(self.raw_data)
-            accessories_tracked = len([a for a in self.parsed_data.get('accessory_sensors', {}).values() if a.get('enabled')])
+        """Log a brief status update ONLY if something has changed (used for non-detailed updates)."""
+        if not self.debug_logger:
+            return
             
-            # Add data source status
-            data_source = "🌐" if self._rest_client and self._rest_client.is_connected else "📱"
-            
+        battery = self.parsed_data.get('battery', 'N/A')
+        clean_speed = self.parsed_data.get('clean_speed', 'N/A')
+        keys_found = len(self.parsed_data.get('monitored_keys_found', []))
+        total_keys = len(self.raw_data)
+        accessories_tracked = len([a for a in self.parsed_data.get('accessory_sensors', {}).values() if a.get('enabled')])
+        data_source = "🌐" if self._rest_client and self._rest_client.is_connected else "📱"
+        
+        # Create current status tuple for comparison
+        current_status = (battery, clean_speed, keys_found, total_keys, accessories_tracked, data_source)
+        
+        # Check if this is different from last logged status
+        if not hasattr(self, '_last_logged_status') or self._last_logged_status != current_status:
+            # Something changed - log it
             brief_msg = (f"Update #{self.update_count}: {data_source} Battery={battery}%, "
                         f"Speed={clean_speed}, Keys={keys_found}/{len(MONITORED_KEYS)}, "
                         f"Total={total_keys}, Accessories={accessories_tracked}")
             
             self.debug_logger.info(brief_msg)
+            
+            # Store current status for next comparison
+            self._last_logged_status = current_status
+            self._quiet_updates_count = 0  # Reset quiet counter
+        else:
+            # Nothing changed - increment quiet counter
+            self._quiet_updates_count += 1
+            
+            # Every 60 quiet updates (10 minutes), log a "still alive" message
+            if self._quiet_updates_count >= self._quiet_log_interval:
+                self.debug_logger.info(f"💤 Update #{self.update_count}: No changes for {self._quiet_updates_count} updates (still monitoring...)")
+                self._quiet_updates_count = 0  # Reset counter
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Fetch data from Eufy API using RestConnect with fallback."""
@@ -481,11 +504,25 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             # Update parsed data
             self.parsed_data["accessory_sensors"] = accessory_data
             
-            # Log detected changes
+            # Log detected changes ONLY if something actually changed
             if changes_detected and self.debug_logger:
                 self.debug_logger.info("🔄 ACCESSORY CHANGES DETECTED:")
                 for change in changes_detected:
                     self.debug_logger.info(f"   {change}")
+            
+            # Also check for any new accessory detection (first time seeing values)
+            new_detections = []
+            for sensor_id, sensor_data in accessory_data.items():
+                detected_value = sensor_data.get('detected_value')
+                if (detected_value is not None and 
+                    sensor_id not in self.previous_accessory_data and
+                    sensor_data.get('enabled', False)):
+                    new_detections.append(f"{sensor_data['name']}: detected {detected_value}%")
+            
+            if new_detections and self.debug_logger:
+                self.debug_logger.info("🎯 NEW ACCESSORY DETECTIONS:")
+                for detection in new_detections:
+                    self.debug_logger.info(f"   {detection}")
             
             # Store current data for next comparison
             self.previous_accessory_data = accessory_data.copy()
