@@ -1,4 +1,4 @@
-"""Constants for Eufy Robovac Data Logger integration."""
+"""Constants for Eufy Robovac Data Logger integration with RestConnect support."""
 
 # Integration constants
 DOMAIN = "Eufy-Robovac-Data-Logger"
@@ -6,7 +6,7 @@ CONF_USERNAME = "username"
 CONF_PASSWORD = "password" 
 CONF_DEBUG_MODE = "debug_mode"
 
-# Update interval in seconds
+# Update interval in seconds - REDUCED for better RestConnect performance
 UPDATE_INTERVAL = 10
 
 # Data keys we want to monitor based on NEW Android app research
@@ -26,6 +26,64 @@ MONITORED_KEYS = [
     "180",  # Accessory data (from existing research)
     "164",  # Alternative water tank (from existing research)
 ]
+
+# RestConnect specific keys (may be available via REST endpoints)
+RESTCONNECT_ENHANCED_KEYS = [
+    "181",  # Enhanced accessory data 1
+    "182",  # Enhanced accessory data 2
+    "183",  # Enhanced accessory data 3
+    "184",  # Enhanced accessory data 4
+    "185",  # Enhanced accessory data 5
+    "186",  # Runtime statistics
+    "187",  # Maintenance data
+    "188",  # Consumable status
+    "189": "Water Tank Detailed (RestConnect)",
+    "190": "Sensor Diagnostics (RestConnect)",
+}
+
+# RestConnect API endpoints
+RESTCONNECT_ENDPOINTS = {
+    "device_data": "https://api.eufylife.com/v1/device/info",
+    "device_status": "https://api.eufylife.com/v1/device/status",
+    "accessory_data": "https://api.eufylife.com/v1/device/accessory_info",
+    "consumable_data": "https://api.eufylife.com/v1/device/consumable_status",
+    "runtime_data": "https://api.eufylife.com/v1/device/runtime_info",
+    "clean_device_info": "https://aiot-clean-api-pr.eufylife.com/app/device/get_device_info",
+    "clean_accessory": "https://aiot-clean-api-pr.eufylife.com/app/device/get_accessory_data",
+}
+
+# RestConnect benefits over basic login
+RESTCONNECT_BENEFITS = [
+    "🌐 Access to additional REST API endpoints",
+    "🔧 Enhanced accessory wear data from dedicated endpoints",
+    "🧽 Consumable status from REST consumable API",
+    "⏱️ Runtime statistics from dedicated endpoint",
+    "🚿 Detailed water tank data from Clean API",
+    "📊 Better data accuracy through multiple data sources",
+    "🎯 Fallback support to basic login if REST fails",
+]
+
+# Logging configuration
+DEBUG_LOG_INTERVALS = {
+    "detailed_log_minutes": 10,  # Detailed log every 10 minutes (reduced from 5)
+    "brief_log_updates": 1,      # Brief log for non-detailed updates
+    "first_updates_detailed": 1, # Only first update in detail (reduced from 3)
+}
+
+# Connection status indicators
+CONNECTION_STATUS_EMOJIS = {
+    "restconnect": "🌐",
+    "basic_login": "📱",
+    "connected": "🟢",
+    "disconnected": "🔴",
+    "fallback": "🟡",
+    "error": "❌",
+}",  # Water tank detailed
+    "190",  # Sensor diagnostics
+]
+
+# Combined monitoring (traditional + RestConnect enhanced)
+ALL_MONITORED_KEYS = MONITORED_KEYS + RESTCONNECT_ENHANCED_KEYS
 
 # Clean speed mappings (for Key 158)
 CLEAN_SPEED_NAMES = ["quiet", "standard", "turbo", "max"]
@@ -69,4 +127,13 @@ KEY_DESCRIPTIONS = {
     "173": "Go Home Commands",
     "180": "Accessory Data (from existing research)",
     "164": "Alternative Water Tank (from existing research)",
-}
+    # RestConnect enhanced descriptions
+    "181": "Enhanced Accessory Data 1 (RestConnect)",
+    "182": "Enhanced Accessory Data 2 (RestConnect)",
+    "183": "Enhanced Accessory Data 3 (RestConnect)",
+    "184": "Enhanced Accessory Data 4 (RestConnect)",
+    "185": "Enhanced Accessory Data 5 (RestConnect)",
+    "186": "Runtime Statistics (RestConnect)",
+    "187": "Maintenance Data (RestConnect)",
+    "188": "Consumable Status (RestConnect)",
+    "189
