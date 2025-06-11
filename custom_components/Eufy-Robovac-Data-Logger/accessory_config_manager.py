@@ -47,20 +47,44 @@ class AccessoryConfigManager:
 
     async def ensure_default_config(self) -> None:
         """
-        FIXED: Create default configuration ONLY if file doesn't exist.
-        This ensures auto-generation on startup but preserves user modifications.
+        FIXED: Smart recovery system - restore from backup if available, otherwise create defaults.
         """
         if not self.config_file.exists():
-            _LOGGER.info("📝 Creating default accessory configuration (AUTO-GENERATION)")
+            _LOGGER.info("📝 Main config file missing, checking for recovery options...")
+            
+            # OPTION 1: Try to restore from backup (preserves user work)
+            if self.backup_file.exists():
+                try:
+                    _LOGGER.info("💾 Found backup file, restoring user configuration...")
+                    
+                    # Copy backup to main config file
+                    async with aiofiles.open(self.backup_file, 'r', encoding='utf-8') as backup_f:
+                        backup_content = await backup_f.read()
+                        # Validate backup is valid JSON
+                        backup_config = json.loads(backup_content)
+                    
+                    async with aiofiles.open(self.config_file, 'w', encoding='utf-8') as main_f:
+                        await main_f.write(backup_content)
+                    
+                    _LOGGER.info("✅ Configuration restored from backup successfully")
+                    _LOGGER.info("📍 Restored file: %s", self.config_file)
+                    _LOGGER.info("🔧 User's byte positions and settings preserved")
+                    return
+                    
+                except Exception as e:
+                    _LOGGER.error("❌ Failed to restore from backup: %s", e)
+                    _LOGGER.info("⚠️ Backup file corrupted, falling back to defaults")
+            
+            # OPTION 2: No backup or backup failed - create from defaults (first time setup)
+            _LOGGER.info("📝 Creating default accessory configuration (FIRST TIME SETUP)")
             _LOGGER.info("🏠 File will be hands-off after creation - user controls it completely")
             
-            # Create proper default config with corrected byte positions
             default_config = await self._create_default_config()
-            
             await self.save_config(default_config, create_backup=False)
-            _LOGGER.info("✅ Default configuration auto-generated successfully")
+            
+            _LOGGER.info("✅ Default configuration created successfully")
             _LOGGER.info("📍 File location: %s", self.config_file)
-            _LOGGER.info("📝 Edit this file to update accessory life percentages")
+            _LOGGER.info("📝 Edit this file to configure correct byte positions and life percentages")
         else:
             _LOGGER.info("📁 Using existing user configuration (hands-off mode)")
             _LOGGER.info("🔒 File exists - integration will not modify user's settings")
