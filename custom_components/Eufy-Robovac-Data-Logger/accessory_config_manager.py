@@ -254,7 +254,7 @@ class AccessoryConfigManager:
         }
 
     async def load_config(self, force_reload: bool = False) -> Dict[str, Any]:
-        """Load accessory configuration from JSON file - HANDS-OFF approach."""
+        """Load accessory configuration from JSON file - HANDS-OFF approach with auto-backup."""
         async with self._file_lock:
             current_time = datetime.now().timestamp()
             
@@ -273,6 +273,16 @@ class AccessoryConfigManager:
                 async with aiofiles.open(self.config_file, 'r', encoding='utf-8') as f:
                     content = await f.read()
                     config = json.loads(content)
+                
+                # AUTO-BACKUP: Create backup if config file exists but no backup exists
+                if self.config_file.exists() and not self.backup_file.exists():
+                    try:
+                        _LOGGER.info("💾 Creating initial backup of user configuration...")
+                        async with aiofiles.open(self.backup_file, 'w', encoding='utf-8') as backup_f:
+                            await backup_f.write(content)
+                        _LOGGER.info("✅ Initial backup created: %s", self.backup_file.name)
+                    except Exception as backup_error:
+                        _LOGGER.warning("⚠️ Failed to create initial backup: %s", backup_error)
                 
                 # Update cache
                 self._config_cache = config.copy()
