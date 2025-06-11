@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EufyX10DebugCoordinator(DataUpdateCoordinator):
-    """Eufy X10 Debugging data coordinator with RestConnect and accessory config management."""
+    """Eufy Robovac Debugging data coordinator with RestConnect and accessory config management."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
@@ -240,7 +240,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             
             if do_detailed:
                 self._debug_log("=" * 60, "info")
-                self._debug_log(f"=== EUFY X10 UPDATE #{self.update_count} (REDUCED LOGGING) ===", "info")
+                self._debug_log(f"=== EUFY ROBOVAC UPDATE #{self.update_count} (REDUCED LOGGING) ===", "info")
                 self._debug_log(f"=== Next detailed log in {self.detailed_log_interval/60:.1f} minutes ===", "info")
                 self._debug_log("=" * 60, "info")
             
@@ -667,3 +667,4 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 self._debug_log(f"❌ Error stopping debug logger: {e}", "error", force=True)
         
         self._debug_log("🛑 Coordinator shutdown completed", "info", force=True)
+        

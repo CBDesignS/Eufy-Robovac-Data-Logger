@@ -27,7 +27,7 @@ class AsyncEufyDebugLogger:
         
         # Create log file path with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_file = self.log_dir / f"eufy_x10_debug_{device_id}_{timestamp}.log"
+        self.log_file = self.log_dir / f"eufy_robovac_debug_{device_id}_{timestamp}.log"
         
         # Start the async logging task
         self.start_logging()
@@ -53,7 +53,7 @@ class AsyncEufyDebugLogger:
         # Write initial header
         header_messages = [
             "=" * 80,
-            f"EUFY X10 DEBUG SESSION STARTED - Device: {self.device_id}",
+            f"EUFY ROBOVAC DEBUG SESSION STARTED - Device: {self.device_id}",
             f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"Log file: {self.log_file}",
             "=" * 80,
@@ -249,7 +249,7 @@ class AsyncEufyDebugLogger:
             
             # Write final message
             await self._log_writer("=" * 80)
-            await self._log_writer("EUFY X10 DEBUG SESSION ENDED")
+            await self._log_writer("EUFY ROBOVAC DEBUG SESSION ENDED")
             await self._log_writer("=" * 80)
             
             # Wait for queue to be processed

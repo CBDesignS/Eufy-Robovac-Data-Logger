@@ -25,17 +25,17 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Eufy X10 Debug sensors with RestConnect."""
+    """Set up Eufy Robovac Debug sensors with RestConnect."""
     coordinator: EufyX10DebugCoordinator = hass.data[DOMAIN][entry.entry_id]
     
     # Core sensors (working and reliable)
     entities = [
-        EufyX10DebugBatterySensor(coordinator),           # ✅ Key 163 - Working
-        EufyX10DebugCleanSpeedSensor(coordinator),        # ✅ Key 158 - Working
-        EufyX10DebugRawDataSensor(coordinator),           # ✅ Debug tool - Useful
-        EufyX10DebugMonitoringSensor(coordinator),        # ✅ Monitoring - Useful
-        EufyX10DebugAccessoryManagerSensor(coordinator),  # 🆕 Accessory config manager
-        EufyX10DebugRestConnectSensor(coordinator),       # 🆕 RestConnect status
+        EufyRobovacDebugBatterySensor(coordinator),           # ✅ Key 163 - Working
+        EufyRobovacDebugCleanSpeedSensor(coordinator),        # ✅ Key 158 - Working
+        EufyRobovacDebugRawDataSensor(coordinator),           # ✅ Debug tool - Useful
+        EufyRobovacDebugMonitoringSensor(coordinator),        # ✅ Monitoring - Useful
+        EufyRobovacDebugAccessoryManagerSensor(coordinator),  # 🆕 Accessory config manager
+        EufyRobovacDebugRestConnectSensor(coordinator),       # 🆕 RestConnect status
     ]
     
     # Add dynamic accessory sensors from JSON configuration
@@ -44,7 +44,7 @@ async def async_setup_entry(
         
         for sensor_id, sensor_config in accessory_sensors.items():
             if sensor_config.get('enabled', False):
-                entities.append(EufyX10DynamicAccessorySensor(coordinator, sensor_id, sensor_config))
+                entities.append(EufyRobovacDynamicAccessorySensor(coordinator, sensor_id, sensor_config))
                 _LOGGER.debug("🔧 Added dynamic accessory sensor: %s", sensor_config.get('name'))
         
         _LOGGER.info("🏭 Setting up %d total sensors (%d core + %d accessories) with RestConnect for device %s", 
@@ -57,7 +57,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class EufyX10DebugBaseSensor(CoordinatorEntity, SensorEntity):
+class EufyRobovacDebugBaseSensor(CoordinatorEntity, SensorEntity):
     """Base sensor for Eufy Robovac Data Logger."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator, sensor_type: str) -> None:
@@ -69,9 +69,9 @@ class EufyX10DebugBaseSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"{self.device_id}_{sensor_type}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self.device_id)},
-            name=f"Eufy X10 Debug {self.device_id}",
+            name=f"Eufy Robovac Debug {self.device_id}",
             manufacturer="Eufy",
-            model="X10 Pro Omni (Debug + RestConnect)",
+            model="Robovac (Debug + RestConnect)",
             sw_version="Debug v2.1.0 - RestConnect + Accessory Config",
         )
         
@@ -83,13 +83,13 @@ class EufyX10DebugBaseSensor(CoordinatorEntity, SensorEntity):
         return self.coordinator.last_update_success
 
 
-class EufyX10DebugBatterySensor(EufyX10DebugBaseSensor):
+class EufyRobovacDebugBatterySensor(EufyRobovacDebugBaseSensor):
     """Battery sensor for debugging Key 163 - KEPT AS WORKING."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the battery sensor."""
         super().__init__(coordinator, "battery")
-        self._attr_name = f"Eufy X10 Debug Battery"
+        self._attr_name = f"Eufy Robovac Debug Battery"
         self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -136,13 +136,13 @@ class EufyX10DebugBatterySensor(EufyX10DebugBaseSensor):
         return attrs
 
 
-class EufyX10DebugCleanSpeedSensor(EufyX10DebugBaseSensor):
+class EufyRobovacDebugCleanSpeedSensor(EufyRobovacDebugBaseSensor):
     """Clean speed sensor for debugging Key 158 - KEPT AS WORKING."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the clean speed sensor."""
         super().__init__(coordinator, "clean_speed")
-        self._attr_name = f"Eufy X10 Debug Clean Speed"
+        self._attr_name = f"Eufy Robovac Debug Clean Speed"
         self._attr_icon = "mdi:speedometer"
 
     @property
@@ -184,13 +184,13 @@ class EufyX10DebugCleanSpeedSensor(EufyX10DebugBaseSensor):
         return attrs
 
 
-class EufyX10DebugRawDataSensor(EufyX10DebugBaseSensor):
+class EufyRobovacDebugRawDataSensor(EufyRobovacDebugBaseSensor):
     """Raw data sensor for complete debugging - KEPT AS USEFUL."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the raw data sensor."""
         super().__init__(coordinator, "raw_data")
-        self._attr_name = f"Eufy X10 Debug Raw Data"
+        self._attr_name = f"Eufy Robovac Debug Raw Data"
         self._attr_icon = "mdi:code-json"
 
     @property
@@ -225,13 +225,13 @@ class EufyX10DebugRawDataSensor(EufyX10DebugBaseSensor):
         return attrs
 
 
-class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
+class EufyRobovacDebugMonitoringSensor(EufyRobovacDebugBaseSensor):
     """Monitoring sensor showing which keys are found/missing - KEPT AS USEFUL."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the monitoring sensor."""
         super().__init__(coordinator, "monitoring")
-        self._attr_name = f"Eufy X10 Debug Monitoring"
+        self._attr_name = f"Eufy Robovac Debug Monitoring"
         self._attr_icon = "mdi:monitor-eye"
 
     @property
@@ -280,13 +280,13 @@ class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
         return attrs
 
 
-class EufyX10DebugAccessoryManagerSensor(EufyX10DebugBaseSensor):
+class EufyRobovacDebugAccessoryManagerSensor(EufyRobovacDebugBaseSensor):
     """Accessory configuration manager sensor."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the accessory manager sensor."""
         super().__init__(coordinator, "accessory_manager")
-        self._attr_name = f"Eufy X10 Accessory Config Manager"
+        self._attr_name = f"Eufy Robovac Accessory Config Manager"
         self._attr_icon = "mdi:cog-outline"
 
     @property
@@ -336,13 +336,13 @@ class EufyX10DebugAccessoryManagerSensor(EufyX10DebugBaseSensor):
         return attrs
 
 
-class EufyX10DebugRestConnectSensor(EufyX10DebugBaseSensor):
+class EufyRobovacDebugRestConnectSensor(EufyRobovacDebugBaseSensor):
     """NEW: RestConnect status and connection information sensor."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the RestConnect sensor."""
         super().__init__(coordinator, "restconnect")
-        self._attr_name = f"Eufy X10 RestConnect Status"
+        self._attr_name = f"Eufy Robovac RestConnect Status"
         self._attr_icon = "mdi:api"
 
     @property
@@ -405,7 +405,7 @@ class EufyX10DebugRestConnectSensor(EufyX10DebugBaseSensor):
         return attrs
 
 
-class EufyX10DynamicAccessorySensor(EufyX10DebugBaseSensor):
+class EufyRobovacDynamicAccessorySensor(EufyRobovacDebugBaseSensor):
     """Dynamic accessory sensor created from JSON configuration."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator, sensor_id: str, sensor_config: Dict[str, Any]) -> None:
@@ -415,7 +415,7 @@ class EufyX10DynamicAccessorySensor(EufyX10DebugBaseSensor):
         self.accessory_id = sensor_id
         self.sensor_config = sensor_config
         
-        self._attr_name = f"Eufy X10 {sensor_config.get('name', sensor_id)}"
+        self._attr_name = f"Eufy Robovac {sensor_config.get('name', sensor_id)}"
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
         self._attr_icon = self._get_accessory_icon(sensor_id)
