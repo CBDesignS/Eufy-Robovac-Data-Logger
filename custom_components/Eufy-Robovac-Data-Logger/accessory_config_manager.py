@@ -1,7 +1,7 @@
 """
 Accessory Configuration Manager for Eufy Robovac Data Logger integration.
 Manages user-editable JSON configuration files for accessory sensors and discovery settings.
-HANDS-OFF APPROACH: Write once on first setup, then never modify user's file.
+FIXED VERSION: Auto-generates missing config files but preserves user modifications.
 """
 
 import asyncio
@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 class AccessoryConfigManager:
     """
     Manages accessory sensor configuration through user-editable JSON files.
-    WRITE ONCE, READ MANY: Only creates defaults on first setup, then hands-off.
+    FIXED: Auto-generates missing files on startup, but never overwrites existing user files.
     """
     
     def __init__(self, integration_dir: str, device_id: str):
@@ -46,140 +46,188 @@ class AccessoryConfigManager:
         _LOGGER.info("📂 Config file: %s", self.config_file)
 
     async def ensure_default_config(self) -> None:
-        """Create default configuration ONLY if file doesn't exist (first time setup)."""
+        """
+        FIXED: Create default configuration ONLY if file doesn't exist.
+        This ensures auto-generation on startup but preserves user modifications.
+        """
         if not self.config_file.exists():
-            _LOGGER.info("📝 Creating default accessory configuration (FIRST TIME SETUP)")
-            _LOGGER.info("🏠 This file will be hands-off after creation - user controls it completely")
+            _LOGGER.info("📝 Creating default accessory configuration (AUTO-GENERATION)")
+            _LOGGER.info("🏠 File will be hands-off after creation - user controls it completely")
             
-            default_config = {
-                "device_info": {
-                    "device_id": self.device_id,
-                    "created": datetime.now().isoformat(),
-                    "last_updated": datetime.now().isoformat(),
-                    "config_version": "1.0"
-                },
-                "accessory_sensors": {
-                    "rolling_brush": {
-                        "name": "Rolling Brush",
-                        "description": "Main cleaning brush - checks for hair tangles and wear",
-                        "key": "180",
-                        "byte_position": 146,
-                        "current_life_remaining": 100,
-                        "max_life_hours": 300,
-                        "replacement_threshold": 10,
-                        "enabled": True,
-                        "auto_update": True,
-                        "last_updated": datetime.now().isoformat(),
-                        "notes": "Replace when tangled or worn down"
-                    },
-                    "side_brush": {
-                        "name": "Side Brush",
-                        "description": "Edge cleaning brush - sweeps debris into main brush path",
-                        "key": "180",
-                        "byte_position": 37,
-                        "current_life_remaining": 100,
-                        "max_life_hours": 200,
-                        "replacement_threshold": 15,
-                        "enabled": True,
-                        "auto_update": True,
-                        "last_updated": datetime.now().isoformat(),
-                        "notes": "Replace when bent or missing bristles"
-                    },
-                    "dust_filter": {
-                        "name": "Dust Filter",
-                        "description": "Air filtration system - captures fine dust and allergens",
-                        "key": "180",
-                        "byte_position": 228,
-                        "current_life_remaining": 100,
-                        "max_life_hours": 150,
-                        "replacement_threshold": 20,
-                        "enabled": True,
-                        "auto_update": True,
-                        "last_updated": datetime.now().isoformat(),
-                        "notes": "Replace when dirty or reduced suction"
-                    },
-                    "mop_cloth": {
-                        "name": "Mop Cloth",
-                        "description": "Mopping attachment - for wet cleaning hard floors",
-                        "key": "180",
-                        "byte_position": 5,
-                        "current_life_remaining": 100,
-                        "max_life_hours": 50,
-                        "replacement_threshold": 30,
-                        "enabled": True,
-                        "auto_update": True,
-                        "last_updated": datetime.now().isoformat(),
-                        "notes": "Replace when frayed or no longer absorbs water"
-                    },
-                    "sensors": {
-                        "name": "Cliff/Bump Sensors",
-                        "description": "Navigation sensors - prevents falls and detects obstacles",
-                        "key": "180",
-                        "byte_position": 95,
-                        "current_life_remaining": 100,
-                        "max_life_hours": 1000,
-                        "replacement_threshold": 5,
-                        "enabled": True,
-                        "auto_update": True,
-                        "last_updated": datetime.now().isoformat(),
-                        "notes": "Clean regularly, rarely need replacement"
-                    }
-                },
-                "discovery_settings": {
-                    "enabled_for_discovery": [
-                        "181", "182", "183", "184", "185", "186", "187", "188", "189", "190"
-                    ],
-                    "auto_add_found_sensors": True,
-                    "stop_searching_after_found": True,
-                    "discovery_timeout_seconds": 300,
-                    "min_updates_before_stop": 5,
-                    "last_discovery_run": None
-                },
-                "advanced_settings": {
-                    "backup_enabled": True,
-                    "auto_backup_interval_hours": 24,
-                    "log_accessory_changes": True,
-                    "alert_on_low_life": True,
-                    "maintenance_reminder_days": [7, 3, 1]
-                },
-                "user_notes": [
-                    "=== HANDS-OFF USER CONFIGURATION ===",
-                    "",
-                    "🏠 This file is now YOURS to manage:",
-                    "  • Edit accessory life percentages as they wear down",
-                    "  • Add/remove accessories as needed",
-                    "  • Modify thresholds and settings",
-                    "  • The integration will NEVER overwrite your changes",
-                    "",
-                    "📝 EDITING INSTRUCTIONS:",
-                    "  • Update 'current_life_remaining' percentages as accessories wear down",
-                    "  • Set 'enabled': false to disable tracking for specific accessories",
-                    "  • Adjust 'replacement_threshold' to change when low-life alerts trigger",
-                    "  • Add notes about replacement dates or maintenance performed",
-                    "",
-                    "🔄 AFTER EDITING:",
-                    "  • Restart the Home Assistant integration to load new values",
-                    "  • Check the debug logs for accessory change detection",
-                    "  • Monitor sensor entities for updated values",
-                    "",
-                    "⚠️ INTEGRATION UPDATES:",
-                    "  • This file will NEVER be modified by integration updates",
-                    "  • You have complete control - add/remove sensors as desired",
-                    "  • New default sensors (if any) won't be auto-added",
-                    "",
-                    "💡 PRO TIPS:",
-                    "  • Keep a maintenance log in the 'notes' field",
-                    "  • Use realistic wear rates based on actual cleaning frequency",
-                    "  • Set calendar reminders based on 'hours_remaining'",
-                    "  • Compare multiple cleaning sessions to confirm sensor locations"
-                ]
-            }
+            # Create proper default config with corrected byte positions
+            default_config = await self._create_default_config()
             
             await self.save_config(default_config, create_backup=False)
-            _LOGGER.info("✅ Default configuration created - now under user control")
+            _LOGGER.info("✅ Default configuration auto-generated successfully")
+            _LOGGER.info("📍 File location: %s", self.config_file)
+            _LOGGER.info("📝 Edit this file to update accessory life percentages")
         else:
             _LOGGER.info("📁 Using existing user configuration (hands-off mode)")
             _LOGGER.info("🔒 File exists - integration will not modify user's settings")
+
+    async def _create_default_config(self) -> Dict[str, Any]:
+        """Create the default configuration with proper byte positions for X10 Pro Omni."""
+        return {
+            "device_info": {
+                "device_id": self.device_id,
+                "created": datetime.now().isoformat(),
+                "last_updated": datetime.now().isoformat(),
+                "config_version": "2.0",
+                "auto_generated": True
+            },
+            "accessory_sensors": {
+                "rolling_brush": {
+                    "name": "Rolling Brush",
+                    "description": "Main cleaning brush - primary debris collection mechanism",
+                    "key": "180",
+                    "byte_position": 146,  # Keep from your working config
+                    "current_life_remaining": 100,
+                    "hours_remaining": 360,
+                    "max_life_hours": 360,
+                    "replacement_threshold": 10,
+                    "enabled": True,
+                    "auto_update": False,  # User must manually update
+                    "last_updated": datetime.now().isoformat(),
+                    "notes": "Replace when tangled or worn down - currently shows wrong value, needs investigation"
+                },
+                "side_brush": {
+                    "name": "Side Brush",
+                    "description": "Edge cleaning brush - sweeps debris into main brush path",
+                    "key": "180", 
+                    "byte_position": 37,  # Keep from your working config
+                    "current_life_remaining": 100,
+                    "hours_remaining": 180,
+                    "max_life_hours": 180,
+                    "replacement_threshold": 15,
+                    "enabled": True,
+                    "auto_update": False,  # User must manually update
+                    "last_updated": datetime.now().isoformat(),
+                    "notes": "Replace when bent or missing bristles - currently shows wrong value, needs investigation"
+                },
+                "dust_filter": {
+                    "name": "Dust Filter",
+                    "description": "Air filtration system - captures fine dust and allergens",
+                    "key": "180",
+                    "byte_position": 228,  # Keep from your working config
+                    "current_life_remaining": 100,
+                    "hours_remaining": 150,
+                    "max_life_hours": 150,
+                    "replacement_threshold": 20,
+                    "enabled": True,
+                    "auto_update": False,  # User must manually update
+                    "last_updated": datetime.now().isoformat(),
+                    "notes": "Replace when dirty or reduced suction - currently shows wrong value, needs investigation"
+                },
+                "mop_cloth": {
+                    "name": "Mop Cloth",
+                    "description": "Mopping attachment - for wet cleaning hard floors",
+                    "key": "180",
+                    "byte_position": 5,  # Keep from your working config
+                    "current_life_remaining": 100,
+                    "hours_remaining": 50,
+                    "max_life_hours": 50,
+                    "replacement_threshold": 30,
+                    "enabled": True,
+                    "auto_update": False,  # User must manually update
+                    "last_updated": datetime.now().isoformat(),
+                    "notes": "Replace when frayed or no longer absorbs water - currently shows wrong value, needs investigation"
+                },
+                "cliff_bump_sensors": {
+                    "name": "Cliff/Bump Sensors",
+                    "description": "Navigation sensors - prevents falls and detects obstacles",
+                    "key": "180",
+                    "byte_position": 95,  # This shows 255 (0xFF) - likely a status flag, not percentage
+                    "current_life_remaining": 100,
+                    "hours_remaining": 1000,
+                    "max_life_hours": 1000,
+                    "replacement_threshold": 5,
+                    "enabled": False,  # Disabled by default since this isn't a percentage sensor
+                    "auto_update": False,
+                    "last_updated": datetime.now().isoformat(),
+                    "notes": "DISABLED: Shows 255 (0xFF) - this is likely a status flag, not wear percentage"
+                },
+                "water_tank_level": {
+                    "name": "Water Tank Level",
+                    "description": "Water tank level sensor - monitors remaining cleaning water",
+                    "key": "167",
+                    "byte_position": 8,  # Based on Android app research
+                    "current_life_remaining": 100,
+                    "hours_remaining": 0,
+                    "max_life_hours": 0,
+                    "replacement_threshold": 10,
+                    "enabled": True,
+                    "auto_update": False,
+                    "last_updated": datetime.now().isoformat(),
+                    "notes": "TESTING: Key 167 Byte 8 from Android app research - should show water level percentage",
+                    "testing_mode": True,
+                    "alternative_positions": [4, 6, 8, 10, 12, 16, 20],
+                    "expected_range": "0-100% water level"
+                }
+            },
+            "discovery_settings": {
+                "enabled_for_discovery": [
+                    "181", "182", "183", "184", "185", "186", "187", "188", "189", "190"
+                ],
+                "auto_add_found_sensors": False,  # Keep hands-off approach
+                "stop_searching_after_found": True,
+                "discovery_timeout_seconds": 300,
+                "min_updates_before_stop": 5,
+                "last_discovery_run": None
+            },
+            "advanced_settings": {
+                "backup_enabled": True,
+                "auto_backup_interval_hours": 24,
+                "log_accessory_changes": True,
+                "alert_on_low_life": True,
+                "maintenance_reminder_days": [7, 3, 1]
+            },
+            "user_notes": [
+                "=== EUFY ROBOVAC ACCESSORY CONFIGURATION ===",
+                "",
+                "🚨 CURRENT STATUS: SENSOR VALUES ARE WRONG",
+                "  • The detected byte positions are returning incorrect values",
+                "  • You need to investigate and find the correct byte positions",
+                "  • Disable sensors that show wrong values to avoid confusion",
+                "",
+                "📝 EDITING INSTRUCTIONS:",
+                "  • Update 'current_life_remaining' percentages as accessories wear down",
+                "  • Set 'enabled': false to disable tracking for incorrect sensors",
+                "  • Adjust 'byte_position' to find correct data locations",
+                "  • Add notes about your findings and replacement dates",
+                "",
+                "🔍 INVESTIGATION WORKFLOW:",
+                "  1. Compare detected values with actual accessory wear",
+                "  2. Check if values match what you see in the Eufy Android app",
+                "  3. Try different byte positions if values are wrong",
+                "  4. Run cleaning cycles and check if values change logically",
+                "  5. Update byte positions when you find correct ones",
+                "",
+                "🔧 CURRENT DETECTED VALUES (probably wrong):",
+                "  • Rolling Brush: 32% (Byte 146) - verify against app",
+                "  • Side Brush: 1% (Byte 37) - verify against app", 
+                "  • Dust Filter: 12% (Byte 228) - verify against app",
+                "  • Mop Cloth: 24% (Byte 5) - verify against app",
+                "  • Cliff Sensors: 255 (Byte 95) - this is a status flag, not percentage",
+                "",
+                "⚠️ IMPORTANT:",
+                "  • This file will NEVER be overwritten by integration updates",
+                "  • You have complete control over all settings",
+                "  • Enable/disable sensors as you verify their accuracy",
+                "  • Document your findings in the 'notes' fields",
+                "",
+                "💡 TROUBLESHOOTING:",
+                "  • If all values seem wrong, the byte positions may be shifted",
+                "  • Try nearby byte positions (±5 bytes) to find correct data",
+                "  • Some data may be scaled differently (0-255 vs 0-100)",
+                "  • Status flags (like 255) are not wear percentages",
+                "",
+                "🔄 AFTER FINDING CORRECT POSITIONS:",
+                "  • Update the byte_position values",
+                "  • Enable the corrected sensors",
+                "  • Set realistic current_life_remaining percentages",
+                "  • Restart the integration to apply changes"
+            ]
+        }
 
     async def load_config(self, force_reload: bool = False) -> Dict[str, Any]:
         """Load accessory configuration from JSON file - HANDS-OFF approach."""
@@ -194,7 +242,7 @@ class AccessoryConfigManager:
                 return self._config_cache.copy()
             
             try:
-                # Ensure config exists (first time setup only)
+                # Ensure config exists (will auto-generate if missing)
                 await self.ensure_default_config()
                 
                 # Load from file AS-IS (no modifications)
@@ -235,6 +283,9 @@ class AccessoryConfigManager:
                 
                 # Last resort: create new default config
                 _LOGGER.warning("⚠️ Creating new default configuration due to corruption")
+                # Remove corrupted file first
+                if self.config_file.exists():
+                    self.config_file.unlink()
                 await self.ensure_default_config()
                 return await self.load_config(force_reload=True)
                 
@@ -438,7 +489,8 @@ class AccessoryConfigManager:
                 "total_sensors": len(config.get("accessory_sensors", {})),
                 "enabled_sensors": len([s for s in config.get("accessory_sensors", {}).values() 
                                       if s.get("enabled", False)]),
-                "user_controlled": True
+                "user_controlled": True,
+                "auto_generated": config.get("device_info", {}).get("auto_generated", False)
             }
             
         except Exception as e:
@@ -448,5 +500,6 @@ class AccessoryConfigManager:
                 "warnings": [],
                 "total_sensors": 0,
                 "enabled_sensors": 0,
-                "user_controlled": False
+                "user_controlled": False,
+                "auto_generated": False
             }
