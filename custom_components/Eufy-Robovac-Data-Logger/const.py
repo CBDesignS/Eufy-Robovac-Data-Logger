@@ -37,48 +37,7 @@ RESTCONNECT_ENHANCED_KEYS = [
     "186",  # Runtime statistics
     "187",  # Maintenance data
     "188",  # Consumable status
-    "189": "Water Tank Detailed (RestConnect)",
-    "190": "Sensor Diagnostics (RestConnect)",
-}
-
-# RestConnect API endpoints
-RESTCONNECT_ENDPOINTS = {
-    "device_data": "https://api.eufylife.com/v1/device/info",
-    "device_status": "https://api.eufylife.com/v1/device/status",
-    "accessory_data": "https://api.eufylife.com/v1/device/accessory_info",
-    "consumable_data": "https://api.eufylife.com/v1/device/consumable_status",
-    "runtime_data": "https://api.eufylife.com/v1/device/runtime_info",
-    "clean_device_info": "https://aiot-clean-api-pr.eufylife.com/app/device/get_device_info",
-    "clean_accessory": "https://aiot-clean-api-pr.eufylife.com/app/device/get_accessory_data",
-}
-
-# RestConnect benefits over basic login
-RESTCONNECT_BENEFITS = [
-    "🌐 Access to additional REST API endpoints",
-    "🔧 Enhanced accessory wear data from dedicated endpoints",
-    "🧽 Consumable status from REST consumable API",
-    "⏱️ Runtime statistics from dedicated endpoint",
-    "🚿 Detailed water tank data from Clean API",
-    "📊 Better data accuracy through multiple data sources",
-    "🎯 Fallback support to basic login if REST fails",
-]
-
-# Logging configuration
-DEBUG_LOG_INTERVALS = {
-    "detailed_log_minutes": 10,  # Detailed log every 10 minutes (reduced from 5)
-    "brief_log_updates": 1,      # Brief log for non-detailed updates
-    "first_updates_detailed": 1, # Only first update in detail (reduced from 3)
-}
-
-# Connection status indicators
-CONNECTION_STATUS_EMOJIS = {
-    "restconnect": "🌐",
-    "basic_login": "📱",
-    "connected": "🟢",
-    "disconnected": "🔴",
-    "fallback": "🟡",
-    "error": "❌",
-}",  # Water tank detailed
+    "189",  # Water tank detailed
     "190",  # Sensor diagnostics
 ]
 
@@ -136,4 +95,45 @@ KEY_DESCRIPTIONS = {
     "186": "Runtime Statistics (RestConnect)",
     "187": "Maintenance Data (RestConnect)",
     "188": "Consumable Status (RestConnect)",
-    "189
+    "189": "Water Tank Detailed (RestConnect)",
+    "190": "Sensor Diagnostics (RestConnect)",
+}
+
+# RestConnect API endpoints
+RESTCONNECT_ENDPOINTS = {
+    "device_data": "https://api.eufylife.com/v1/device/info",
+    "device_status": "https://api.eufylife.com/v1/device/status",
+    "accessory_data": "https://api.eufylife.com/v1/device/accessory_info",
+    "consumable_data": "https://api.eufylife.com/v1/device/consumable_status",
+    "runtime_data": "https://api.eufylife.com/v1/device/runtime_info",
+    "clean_device_info": "https://aiot-clean-api-pr.eufylife.com/app/device/get_device_info",
+    "clean_accessory": "https://aiot-clean-api-pr.eufylife.com/app/device/get_accessory_data",
+}
+
+# RestConnect benefits over basic login
+RESTCONNECT_BENEFITS = [
+    "🌐 Access to additional REST API endpoints",
+    "🔧 Enhanced accessory wear data from dedicated endpoints",
+    "🧽 Consumable status from REST consumable API",
+    "⏱️ Runtime statistics from dedicated endpoint",
+    "🚿 Detailed water tank data from Clean API",
+    "📊 Better data accuracy through multiple data sources",
+    "🎯 Fallback support to basic login if REST fails",
+]
+
+# Logging configuration
+DEBUG_LOG_INTERVALS = {
+    "detailed_log_minutes": 10,  # Detailed log every 10 minutes (reduced from 5)
+    "brief_log_updates": 1,      # Brief log for non-detailed updates
+    "first_updates_detailed": 1, # Only first update in detail (reduced from 3)
+}
+
+# Connection status indicators
+CONNECTION_STATUS_EMOJIS = {
+    "restconnect": "🌐",
+    "basic_login": "📱",
+    "connected": "🟢",
+    "disconnected": "🔴",
+    "fallback": "🟡",
+    "error": "❌",
+}
