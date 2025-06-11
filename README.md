@@ -31,13 +31,13 @@ This RestConnect edition builds upon their outstanding contributions to bring en
 ### Enhanced Data Collection
 - **Multiple API Endpoints**: Access to device, accessory, consumable, and runtime data
 - **Smart Fallback**: Automatically falls back to basic login if REST endpoints fail
-- **Reduced Logging**: Detailed logs every 10 minutes (reduced from 5) to save space
+- **Reduced Logging**: Detailed logs every 10 minutes to save space 1 full dps log and 1 full rest log
 - **Connection Status**: New sensor showing RestConnect vs Basic Login status
 
 ### Improved Accessory Tracking
 - **Enhanced Byte Analysis**: Better debugging of accessory wear data
 - **Multiple Data Sources**: Combines traditional DPS data with REST endpoint data
-- **Real-time Detection**: Shows when RestConnect provides additional data
+- **Real-time Detection**: Shows when RestConnect provides additional data if and when it becomes active again !!
 
 ## 📥 Installation
 
