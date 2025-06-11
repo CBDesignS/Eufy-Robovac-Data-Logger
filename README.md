@@ -1,17 +1,43 @@
-# Eufy Robovac API Data Logger Integration
+# Eufy Robovac API Data Logger Integration - RestConnect Edition
 
 [![HACS Custom Repository](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger)
 [![GitHub Release](https://img.shields.io/github/release/CBDesignS/Eufy-Robovac-Data-Logger.svg)](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/releases)
 
-A Home Assistant custom component for debugging Eufy X10 Pro Omni REST API data. This integration is specifically designed to help developers understand the data structure and API responses from the NEW Android app.
+A Home Assistant custom component for debugging Eufy X10 Pro Omni REST API data with enhanced RestConnect support. This integration now includes advanced REST API endpoints for improved accessory tracking and debugging capabilities.
 
 ## 🎯 Purpose
 
-This integration focuses on debugging and logging the REST API data from my Eufy X10 Pro Omni devices (other devices may work if they use the NEW Eufy Clean Mobile App, but are untested), particularly the new data sources discovered:
+This integration focuses on debugging and logging the REST API data from Eufy X10 Pro Omni devices, with enhanced data collection through RestConnect:
 
+- **🌐 RestConnect**: Advanced REST API client with multiple endpoint support
+- **📱 Fallback Mode**: Automatic fallback to basic login if RestConnect fails
 - **Key 163**: Battery level (NEW Android App - 100% accuracy)
 - **Key 167**: Water tank level
-- **Key 178**: Real-time data source
+- **Key 180**: Accessory wear data with enhanced byte-level analysis
+- **Keys 181-190**: Enhanced data from RestConnect endpoints
+
+## 🙏 Acknowledgments
+
+Special thanks to the developers who made this integration possible:
+
+- **[jeppesens](https://github.com/jeppesens/eufy-clean)** - For his excellent work cleaning up the Login, Authentication, Device ID handling and removing unused code. His refined codebase provided the solid foundation for this RestConnect implementation.
+
+- **[Martijnpoppen](https://github.com/martijnpoppen/eufy-clean)** - For the hard work in producing the original code to make all this happen. Without his initial research and reverse engineering of the Eufy API, none of this would have been possible.
+
+This RestConnect edition builds upon their outstanding contributions to bring enhanced debugging capabilities and improved data collection to the Eufy robovac community.
+
+## 🆕 What's New in RestConnect Edition
+
+### Enhanced Data Collection
+- **Multiple API Endpoints**: Access to device, accessory, consumable, and runtime data
+- **Smart Fallback**: Automatically falls back to basic login if REST endpoints fail
+- **Reduced Logging**: Detailed logs every 10 minutes (reduced from 5) to save space
+- **Connection Status**: New sensor showing RestConnect vs Basic Login status
+
+### Improved Accessory Tracking
+- **Enhanced Byte Analysis**: Better debugging of accessory wear data
+- **Multiple Data Sources**: Combines traditional DPS data with REST endpoint data
+- **Real-time Detection**: Shows when RestConnect provides additional data
 
 ## 📥 Installation
 
@@ -41,88 +67,131 @@ This integration focuses on debugging and logging the REST API data from my Eufy
 4. Enter your credentials:
    - **Username**: Your Eufy account username
    - **Password**: Your Eufy account password
-   - **Device ID**: Your robot's device ID/serial number
    - **Debug Mode**: Enable verbose logging (recommended)
+
+The integration will automatically:
+- Initialize RestConnect for enhanced data collection
+- Fall back to basic login if RestConnect fails
+- Discover your devices and create appropriate sensors
 
 ## 📊 Sensors Created
 
-The integration creates 6 debug sensors:
+The integration creates 7 core sensors + dynamic accessory sensors:
 
-### Battery Sensor (`sensor.eufy_x10_debug_battery`)
+### Core Sensors
+
+#### Battery Sensor (`sensor.eufy_x10_debug_battery`)
 - **Source**: Key 163 (NEW Android App)
 - **Accuracy**: 100% (Perfect match)
-- Shows battery percentage with detailed debugging attributes
+- **Data Source**: RestConnect or Basic Login
 
-### Water Tank Sensor (`sensor.eufy_x10_debug_water_tank`)
-- **Source**: Key 167, Byte 4 (NEW Android App)  
-- **Accuracy**: 82% (Close to real 83%)
-- Decodes base64 data and extracts water level from specific byte
-
-### Clean Speed Sensor (`sensor.eufy_x10_debug_clean_speed`)
+#### Clean Speed Sensor (`sensor.eufy_x10_debug_clean_speed`)
 - **Source**: Key 158
-- Shows current cleaning speed (quiet/standard/turbo/max)
+- **Values**: quiet/standard/turbo/max
+- **Data Source**: RestConnect or Basic Login
 
-### Work Status Sensor (`sensor.eufy_x10_debug_work_status`)
-- **Source**: Key 153 + Key 152
-- Shows robot status (standby/cleaning/charging/etc.) and play/pause state
-
-### Raw Data Sensor (`sensor.eufy_x10_debug_raw_data`)
+#### Raw Data Sensor (`sensor.eufy_x10_debug_raw_data`)
 - Shows total number of API keys received
-- Attributes contain all raw API data (truncated for safety)
+- Indicates data source (RestConnect vs Basic Login)
+- Attributes contain raw API data (truncated for safety)
 
-### Monitoring Sensor (`sensor.eufy_x10_debug_monitoring`)
+#### Monitoring Sensor (`sensor.eufy_x10_debug_monitoring`)
 - Shows coverage: "X/Y" keys found
-- Detailed status of all monitored keys (PRESENT/MISSING)
-- Coverage percentage
+- Detailed status of all monitored keys
+- Data source tracking
+
+#### Accessory Manager Sensor (`sensor.eufy_x10_accessory_config_manager`)
+- Shows number of configured accessories
+- Status of JSON configuration system
+- Low-life accessory alerts
+
+#### 🆕 RestConnect Status Sensor (`sensor.eufy_x10_restconnect_status`)
+- **Connection Status**: Connected/Fallback Mode
+- **API Endpoints**: Status of all REST endpoints
+- **Authentication**: Token status indicators
+- **Performance**: Enhanced vs Standard data collection
+
+### Dynamic Accessory Sensors
+Automatically created from JSON configuration:
+- Rolling Brush Life
+- Side Brush Life  
+- HEPA Filter Life
+- Mop Cloth Life
+- Sensor/Cliff Sensors Life
+- Water Tank Level (testing)
+
+## 🌐 RestConnect vs Basic Login
+
+### RestConnect Mode (🌐)
+- **Enhanced Data**: Access to additional REST API endpoints
+- **Multiple Sources**: Device, accessory, consumable, and runtime APIs
+- **Better Accuracy**: Combines multiple data sources for improved reliability
+- **Future-Proof**: Ready for new Eufy API features
+
+### Basic Login Fallback (📱)
+- **Reliable**: Uses proven DPS data extraction
+- **Compatible**: Works with all Eufy devices
+- **Stable**: Automatic fallback if RestConnect fails
 
 ## 🔍 Debugging Features
 
-### Extensive Logging
-When debug mode is enabled, the integration logs:
+### Reduced Logging Overhead
+- **Detailed Logs**: Every 10 minutes (reduced from 5 minutes)
+- **First Update**: Only first update logged in detail (reduced from 3)
+- **Brief Status**: Compact status updates between detailed logs
+- **Smart Fallback**: Logs RestConnect failures and automatic fallback
 
-```
-[custom_components.Eufy-Robovac-Data-Logger.coordinator] === EUFY X10 DEBUG UPDATE #1 ===
-[custom_components.Eufy-Robovac-Data-Logger.coordinator] === EUFY X10 DEBUG: RAW API DATA ===
-[custom_components.Eufy-Robovac-Data-Logger.coordinator] === BATTERY PROCESSING (NEW ANDROID APP) ===
-[custom_components.Eufy-Robovac-Data-Logger.coordinator] === WATER TANK PROCESSING (NEW ANDROID APP) ===
-[custom_components.Eufy-Robovac-Data-Logger.coordinator] === PROCESSING SUMMARY ===
-```
+### Enhanced Byte Analysis
+- **Accessory Detection**: Enhanced debugging of Key 180 byte positions
+- **Water Tank**: Testing multiple byte positions for accurate detection
+- **Change Detection**: Monitors for accessory wear changes between updates
 
-### Rich Sensor Attributes
-Each sensor includes detailed attributes showing:
-- Raw API values
-- Data sources
-- Processing methods
-- Accuracy information
-- Update counts and timestamps
+### RestConnect Connection Monitoring
+```
+Update #5: 🌐 Battery=100%, Speed=max, Keys=14/14, Total=31, Accessories=5
+```
+- 🌐 = RestConnect active
+- 📱 = Basic login fallback
 
 ## 🛠️ For Developers
 
-### Replacing Mock Data
+### RestConnect Architecture
+The integration uses a layered approach:
 
-The integration currently uses mock data in `coordinator.py`. To use with real API calls:
+1. **RestConnect Client**: Primary data source with multiple REST endpoints
+2. **EufyLogin**: Fallback authentication and basic DPS data
+3. **Smart Coordinator**: Manages connection switching and data processing
 
-1. Replace the `_fetch_eufy_data()` method in `coordinator.py`
-2. Implement actual Eufy API authentication and data fetching
-3. The data processing logic is already complete
+### Key Code Changes
+- `coordinator.py`: Now uses RestConnect with automatic fallback
+- `sensor.py`: Added RestConnect status sensor
+- `const.py`: Added RestConnect-specific constants
+- Logging reduced to save disk space
 
-### Monitored Keys
-
-The integration monitors these specific keys based on research:
-
+### API Endpoints Used
 ```python
-MONITORED_KEYS = [
-    "163",  # Battery (NEW Android App - 100% accuracy)
-    "167",  # Water tank data (Key 167, Byte 4 - 82% accuracy)  
-    "177",  # Alternative water tank source
-    "178",  # Real-time data source
-    "168",  # Accessories status
-    "153",  # Work status/mode
-    "152",  # Play/pause commands
-    "158",  # Clean speed settings
-    # ... more keys
-]
+RESTCONNECT_ENDPOINTS = {
+    "device_data": "https://api.eufylife.com/v1/device/info",
+    "accessory_data": "https://api.eufylife.com/v1/device/accessory_info", 
+    "consumable_data": "https://api.eufylife.com/v1/device/consumable_status",
+    "runtime_data": "https://api.eufylife.com/v1/device/runtime_info",
+    "clean_accessory": "https://aiot-clean-api-pr.eufylife.com/app/device/get_accessory_data"
+}
 ```
+
+## 📋 Testing the RestConnect Update
+
+### Immediate Testing
+1. **Install the Update**: Upload the new files and restart HA
+2. **Check Sensor Status**: Look for "RestConnect Status" sensor
+3. **Monitor Data Source**: Raw Data sensor shows "RestConnect" or "Basic Login"
+4. **Verify Fallback**: If RestConnect fails, integration should continue with Basic Login
+
+### Accessory Testing Workflow
+1. **Check Current State**: Note accessory percentages in JSON config
+2. **Run Cleaning Cycle**: 5-10 minute room clean
+3. **Monitor for Changes**: Check logs for byte-level changes in Key 180
+4. **Compare Before/After**: Look for 1-2% decreases in accessory wear
 
 ## 🐛 Enable Debug Logging
 
@@ -135,23 +204,35 @@ logger:
     custom_components.Eufy-Robovac-Data-Logger: debug
 ```
 
-Then restart Home Assistant to see detailed logs.
-
 ## 📋 Key Findings
 
 Based on extensive protocol analysis:
 
-- **NEW Android App**: Uses different data sources than old app, so the old mqtt protobuf data no longer exists
+- **RestConnect Benefits**: Access to additional API endpoints for enhanced data
+- **Smart Fallback**: Automatic recovery if advanced endpoints fail
 - **Key 163**: Perfect battery source (100% accuracy)
-- **Key 167, Byte 4**: Best water tank source (82% accuracy)
-- **REST API Mode**: New app appears to use REST API only, not MQTT
+- **Key 180**: Enhanced accessory analysis with multiple data sources
+- **Reduced Logging**: 50% less log overhead while maintaining debugging capability
+
+## ⚠️ Important Notes
+
+### RestConnect Requirements
+- Requires stable internet connection for REST API access
+- Falls back to basic login if endpoints are unavailable
+- Some enhanced features may not be available in fallback mode
+
+### Testing Recommendations
+1. **Monitor RestConnect Status**: Check the new sensor for connection health
+2. **Compare Data Sources**: Note differences between RestConnect and Basic Login
+3. **Test Fallback**: Verify integration continues working if RestConnect fails
+4. **Accessory Tracking**: Run cleaning cycles to test wear detection
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
+4. Test with both RestConnect and Basic Login modes
 5. Submit a pull request
 
 ## 📜 License
@@ -160,7 +241,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## ⚠️ Disclaimer
 
-This is a debugging integration intended for development purposes. Use at your own risk. Not affiliated with Eufy/Anker.
+This is a debugging integration intended for development purposes. RestConnect provides enhanced data collection but may have different stability characteristics than basic login. Use at your own risk.
 
 ## 🆘 Support
 
@@ -169,11 +250,25 @@ This is a debugging integration intended for development purposes. Use at your o
 
 ## 🙏 Acknowledgments
 
-Based on research into the NEW Android Eufy app protocol and REST API data sources.
+## 🙏 Acknowledgments
 
-## to do list
-rewrite the sensor search code so that found working sensors are no longer searched for.
-add the ability to add and search for new sensors as Eufy includes them in the app (if any new sensors are released)
-Auto add found tested working sensors to Home Assistant.
+Special thanks to the developers who made this integration possible:
 
-This is very early test code, contains lots of errors and bugs and may not be of much use if Eufy make big changes to their servers.
+- **[jeppesens](https://github.com/jeppesens/eufy-clean)** - For his excellent work cleaning up the Login, Authentication, Device ID handling and removing unused code. His refined codebase provided the solid foundation for this RestConnect implementation.
+
+- **[Martijnpoppen](https://github.com/martijnpoppen/eufy-clean)** - For the hard work in producing the original code to make all this happen. Without his initial research and reverse engineering of the Eufy API, none of this would have been possible.
+
+This RestConnect edition builds upon their outstanding contributions to bring enhanced debugging capabilities and improved data collection to the Eufy robovac community.
+
+Based on research into the NEW Android Eufy app protocol and REST API data sources, with enhanced RestConnect support for improved debugging capabilities.
+
+## 📝 Changelog
+
+### v2.1.0 - RestConnect Edition
+- ✅ Added RestConnect support with multiple REST API endpoints
+- ✅ Smart fallback to basic login if RestConnect fails
+- ✅ Reduced logging overhead (detailed logs every 10 minutes)
+- ✅ New RestConnect status sensor
+- ✅ Enhanced accessory byte analysis
+- ✅ Improved connection status indicators
+- ✅ Better error handling and recovery
