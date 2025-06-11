@@ -1,4 +1,4 @@
-"""Sensor platform for Eufy Robovac Data Logger integration - CLEANED UP VERSION."""
+"""Sensor platform for Eufy Robovac Data Logger integration - RestConnect Version."""
 import logging
 from typing import Any, Dict, Optional
 
@@ -25,7 +25,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Eufy X10 Debug sensors - CLEANED UP."""
+    """Set up Eufy X10 Debug sensors with RestConnect."""
     coordinator: EufyX10DebugCoordinator = hass.data[DOMAIN][entry.entry_id]
     
     # Core sensors (working and reliable)
@@ -35,6 +35,7 @@ async def async_setup_entry(
         EufyX10DebugRawDataSensor(coordinator),           # ✅ Debug tool - Useful
         EufyX10DebugMonitoringSensor(coordinator),        # ✅ Monitoring - Useful
         EufyX10DebugAccessoryManagerSensor(coordinator),  # 🆕 Accessory config manager
+        EufyX10DebugRestConnectSensor(coordinator),       # 🆕 RestConnect status
     ]
     
     # Add dynamic accessory sensors from JSON configuration
@@ -46,12 +47,12 @@ async def async_setup_entry(
                 entities.append(EufyX10DynamicAccessorySensor(coordinator, sensor_id, sensor_config))
                 _LOGGER.debug("🔧 Added dynamic accessory sensor: %s", sensor_config.get('name'))
         
-        _LOGGER.info("🏭 Setting up %d total sensors (%d core + %d accessories) for device %s", 
-                    len(entities), 5, len(accessory_sensors), coordinator.device_id)
+        _LOGGER.info("🏭 Setting up %d total sensors (%d core + %d accessories) with RestConnect for device %s", 
+                    len(entities), 6, len(accessory_sensors), coordinator.device_id)
     
     except Exception as e:
         _LOGGER.error("❌ Failed to load accessory sensors: %s", e)
-        _LOGGER.info("🏭 Setting up %d core sensors only for device %s", len(entities), coordinator.device_id)
+        _LOGGER.info("🏭 Setting up %d core sensors only with RestConnect for device %s", len(entities), coordinator.device_id)
     
     async_add_entities(entities)
 
@@ -70,11 +71,11 @@ class EufyX10DebugBaseSensor(CoordinatorEntity, SensorEntity):
             identifiers={(DOMAIN, self.device_id)},
             name=f"Eufy X10 Debug {self.device_id}",
             manufacturer="Eufy",
-            model="X10 Pro Omni (Debug)",
-            sw_version="Debug v2.0.0 - Accessory Config",
+            model="X10 Pro Omni (Debug + RestConnect)",
+            sw_version="Debug v2.1.0 - RestConnect + Accessory Config",
         )
         
-        _LOGGER.debug("🔧 Initialized %s sensor for device %s", sensor_type, self.device_id)
+        _LOGGER.debug("🔧 Initialized %s sensor for device %s with RestConnect", sensor_type, self.device_id)
 
     @property
     def available(self) -> bool:
@@ -106,9 +107,11 @@ class EufyX10DebugBatterySensor(EufyX10DebugBaseSensor):
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
         raw_163 = self.coordinator.raw_data.get("163")
+        data_source = self.coordinator.data.get("data_source", "Unknown")
+        
         attrs = {
             "raw_key_163": raw_163,
-            "data_source": "Key 163 (Working)",
+            "data_source": f"{data_source} - Key 163",
             "reliability": "✅ 100% Accurate",
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
@@ -154,13 +157,14 @@ class EufyX10DebugCleanSpeedSensor(EufyX10DebugBaseSensor):
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
         raw_158 = self.coordinator.raw_data.get("158")
+        data_source = self.coordinator.data.get("data_source", "Unknown")
         from .const import CLEAN_SPEED_NAMES
         
         attrs = {
             "raw_key_158": raw_158,
             "available_speeds": CLEAN_SPEED_NAMES,
             "speed_mapping": {i: speed for i, speed in enumerate(CLEAN_SPEED_NAMES)},
-            "data_source": "Key 158 (Working)",
+            "data_source": f"{data_source} - Key 158",
             "reliability": "✅ Accurate",
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
@@ -199,13 +203,16 @@ class EufyX10DebugRawDataSensor(EufyX10DebugBaseSensor):
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return all raw data as attributes."""
+        data_source = self.coordinator.data.get("data_source", "Unknown")
+        
         attrs = {
             "total_keys": len(self.coordinator.raw_data),
             "raw_data_keys": list(self.coordinator.raw_data.keys()),
+            "data_source": data_source,
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
-            "data_emoji": "📊",
-            "purpose": "Complete API data for analysis",
+            "data_emoji": "🌐" if "RestConnect" in data_source else "📱",
+            "purpose": f"Complete API data from {data_source}",
         }
         
         # Add first 15 characters of each raw value for debugging (prevent overflow)
@@ -242,6 +249,7 @@ class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
         found_keys = self.coordinator.data.get("monitored_keys_found", [])
         missing_keys = self.coordinator.data.get("monitored_keys_missing", [])
         coverage_pct = round((len(found_keys) / len(MONITORED_KEYS)) * 100, 1) if MONITORED_KEYS else 0
+        data_source = self.coordinator.data.get("data_source", "Unknown")
         
         attrs = {
             "monitored_keys_total": len(MONITORED_KEYS),
@@ -250,9 +258,10 @@ class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
             "monitored_keys_found": found_keys,
             "monitored_keys_missing": missing_keys,
             "coverage_percentage": coverage_pct,
+            "data_source": data_source,
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
-            "purpose": "Track hardcoded key discovery",
+            "purpose": f"Track hardcoded key discovery via {data_source}",
         }
         
         # Add coverage emoji
@@ -272,7 +281,7 @@ class EufyX10DebugMonitoringSensor(EufyX10DebugBaseSensor):
 
 
 class EufyX10DebugAccessoryManagerSensor(EufyX10DebugBaseSensor):
-    """NEW: Accessory configuration manager sensor."""
+    """Accessory configuration manager sensor."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the accessory manager sensor."""
@@ -327,8 +336,77 @@ class EufyX10DebugAccessoryManagerSensor(EufyX10DebugBaseSensor):
         return attrs
 
 
+class EufyX10DebugRestConnectSensor(EufyX10DebugBaseSensor):
+    """NEW: RestConnect status and connection information sensor."""
+
+    def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
+        """Initialize the RestConnect sensor."""
+        super().__init__(coordinator, "restconnect")
+        self._attr_name = f"Eufy X10 RestConnect Status"
+        self._attr_icon = "mdi:api"
+
+    @property
+    def native_value(self) -> str:
+        """Return RestConnect connection status."""
+        data_source = self.coordinator.data.get("data_source", "Unknown")
+        if "RestConnect" in data_source:
+            return "Connected"
+        else:
+            return "Fallback Mode"
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return RestConnect status details."""
+        data_source = self.coordinator.data.get("data_source", "Unknown")
+        
+        # Base attributes
+        attrs = {
+            "data_source": data_source,
+            "connection_mode": "🌐 RestConnect" if "RestConnect" in data_source else "📱 Basic Login",
+            "last_update": self.coordinator.data.get("last_update"),
+            "update_count": self.coordinator.data.get("update_count"),
+            "purpose": "Monitor REST API connection status",
+        }
+        
+        # Get RestConnect detailed info if available
+        try:
+            rest_info = self.coordinator.get_rest_connection_info()
+            attrs.update({
+                "rest_connected": rest_info.get('is_connected', False),
+                "rest_last_update": rest_info.get('last_update'),
+                "rest_update_count": rest_info.get('update_count', 0),
+                "rest_keys_received": rest_info.get('keys_received', 0),
+                "rest_has_auth": rest_info.get('has_auth_token', False),
+                "rest_has_user_token": rest_info.get('has_user_center_token', False),
+                "rest_has_gtoken": rest_info.get('has_gtoken', False),
+                "rest_device_id": rest_info.get('device_id'),
+                "rest_user_id": rest_info.get('user_id'),
+            })
+            
+            # API endpoints status
+            endpoints = rest_info.get('api_endpoints_available', {})
+            for endpoint, available in endpoints.items():
+                attrs[f"endpoint_{endpoint}"] = "✅ Available" if available else "❌ Not Available"
+            
+        except Exception as e:
+            attrs["rest_error"] = str(e)
+            attrs["rest_connected"] = False
+        
+        # Status indicators
+        if "RestConnect" in data_source:
+            attrs["status_emoji"] = "🟢"
+            attrs["status"] = "Using advanced REST API endpoints"
+            attrs["performance"] = "🚀 Enhanced data collection"
+        else:
+            attrs["status_emoji"] = "🟡"
+            attrs["status"] = "Using basic login fallback"
+            attrs["performance"] = "⚡ Standard data collection"
+        
+        return attrs
+
+
 class EufyX10DynamicAccessorySensor(EufyX10DebugBaseSensor):
-    """NEW: Dynamic accessory sensor created from JSON configuration."""
+    """Dynamic accessory sensor created from JSON configuration."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator, sensor_id: str, sensor_config: Dict[str, Any]) -> None:
         """Initialize dynamic accessory sensor."""
@@ -376,6 +454,7 @@ class EufyX10DynamicAccessorySensor(EufyX10DebugBaseSensor):
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return accessory-specific attributes."""
         accessory_data = self.coordinator.data.get("accessory_sensors", {}).get(self.accessory_id, {})
+        data_source = self.coordinator.data.get("data_source", "Unknown")
         
         attrs = {
             "accessory_name": self.sensor_config.get('name'),
@@ -385,7 +464,7 @@ class EufyX10DynamicAccessorySensor(EufyX10DebugBaseSensor):
             "hours_remaining": accessory_data.get("hours_remaining", 0),
             "max_hours": accessory_data.get("max_hours", 0),
             "replacement_threshold": accessory_data.get("threshold", 10),
-            "data_source": f"Key {accessory_data.get('key')}, Byte {accessory_data.get('byte_position')}",
+            "data_source": f"{data_source} - Key {accessory_data.get('key')}, Byte {accessory_data.get('byte_position')}",
             "enabled": accessory_data.get("enabled", True),
             "notes": accessory_data.get("notes", ""),
             "last_updated": accessory_data.get("last_updated"),
@@ -422,5 +501,11 @@ class EufyX10DynamicAccessorySensor(EufyX10DebugBaseSensor):
         else:
             attrs["detection_accuracy"] = "⚪ Not detected"
             attrs["detection_difference"] = "N/A"
+        
+        # Add RestConnect benefit indicator
+        if "RestConnect" in data_source:
+            attrs["api_benefits"] = "🌐 Enhanced accessory data from REST endpoints"
+        else:
+            attrs["api_benefits"] = "📱 Basic DPS data extraction"
         
         return attrs

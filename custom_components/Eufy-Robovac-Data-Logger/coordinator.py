@@ -1,4 +1,4 @@
-"""Data update coordinator for Eufy Robovac Data Logger integration with Accessory Config Manager."""
+"""Data update coordinator for Eufy Robovac Data Logger integration with RestConnect enabled."""
 import asyncio
 import logging
 import time
@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EufyX10DebugCoordinator(DataUpdateCoordinator):
-    """Eufy X10 Debugging data coordinator with accessory config management."""
+    """Eufy X10 Debugging data coordinator with RestConnect and accessory config management."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
@@ -36,13 +36,14 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.last_update: Optional[float] = None
         self.update_count = 0
         
-        # Logging control - detailed log every 5 minutes (300 seconds)
-        self.detailed_log_interval = 300  # 5 minutes in seconds
+        # Logging control - detailed log every 10 minutes (600 seconds) - REDUCED from 5 minutes
+        self.detailed_log_interval = 600  # 10 minutes in seconds
         self.last_detailed_log = 0
-        self.first_few_updates = 3  # Always log first 3 updates in detail
+        self.first_few_updates = 1  # REDUCED: Only log first update in detail
         
         # Connection tracking
         self._eufy_login = None
+        self._rest_client = None  # NEW: RestConnect client
         self._last_successful_update = None
         self._consecutive_failures = 0
         
@@ -59,12 +60,12 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 # Import the async logger
                 from .async_debug_logger import AsyncEufyDebugLogger
                 self.debug_logger = AsyncEufyDebugLogger(self.device_id, hass.config.config_dir)
-                _LOGGER.info("🚀 DEBUG MODE: Coordinator initialized with accessory config management for device: %s", self.device_id)
+                _LOGGER.info("🚀 DEBUG MODE: Coordinator initialized with RestConnect + accessory config for device: %s", self.device_id)
             except Exception as e:
                 _LOGGER.error("Failed to initialize async debug logger: %s", e)
                 _LOGGER.info("🚀 DEBUG MODE: Coordinator initialized (file logging disabled) for device: %s", self.device_id)
         else:
-            _LOGGER.info("🚀 Coordinator initialized for device: %s", self.device_id)
+            _LOGGER.info("🚀 Coordinator initialized with RestConnect for device: %s", self.device_id)
         
         super().__init__(
             hass,
@@ -79,11 +80,14 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             # Initialize accessory configuration
             await self._initialize_accessory_config()
             
+            # Initialize RestConnect
+            await self._initialize_rest_client()
+            
             # Call parent first refresh
             await super().async_config_entry_first_refresh()
             
         except Exception as e:
-            _LOGGER.error("❌ Failed during first refresh with accessory config: %s", e)
+            _LOGGER.error("❌ Failed during first refresh with RestConnect + accessory config: %s", e)
             raise
 
     async def _initialize_accessory_config(self) -> None:
@@ -113,15 +117,69 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             # Don't raise - continue without accessory config if needed
             self.accessory_sensors = {}
 
+    async def _initialize_rest_client(self) -> None:
+        """Initialize the RestConnect client."""
+        try:
+            self._debug_log("🌐 Initializing RestConnect client...", "info", force=True)
+            
+            # Import here to avoid circular imports
+            from .controllers.login import EufyLogin
+            from .controllers.rest_connect import RestConnect
+            
+            # Create login instance first
+            self._eufy_login = EufyLogin(
+                username=self.username,
+                password=self.password,
+                openudid=self.openudid
+            )
+            
+            # Initialize login to get authentication
+            await self._eufy_login.init()
+            self._debug_log("✅ EufyLogin initialized successfully", "info", force=True)
+            
+            # Create RestConnect configuration
+            rest_config = {
+                'deviceId': self.device_id,
+                'deviceModel': self.device_model,
+                'debug': self.debug_mode
+            }
+            
+            # Create RestConnect client
+            self._rest_client = RestConnect(
+                config=rest_config,
+                openudid=self.openudid,
+                eufyCleanApi=self._eufy_login
+            )
+            
+            # Set debug logger for RestConnect
+            if self.debug_logger:
+                self._rest_client.debug_logger = self.debug_logger
+            
+            # Connect the REST client
+            await self._rest_client.connect()
+            self._debug_log("✅ RestConnect client initialized and connected", "info", force=True)
+            
+        except Exception as e:
+            self._debug_log(f"❌ Failed to initialize RestConnect: {e}", "error", force=True)
+            # Fall back to basic login if RestConnect fails
+            if not self._eufy_login:
+                from .controllers.login import EufyLogin
+                self._eufy_login = EufyLogin(
+                    username=self.username,
+                    password=self.password,
+                    openudid=self.openudid
+                )
+            self._debug_log("⚠️ Falling back to basic EufyLogin", "warning", force=True)
+
     def _should_do_detailed_logging(self) -> bool:
         """Determine if we should do detailed logging this update."""
         current_time = time.time()
         
-        # Always log first few updates
+        # Always log first update only (REDUCED from 3)
         if self.update_count <= self.first_few_updates:
             return True
         
-        # Log every 5 minutes after that
+        # Log every 10 minutes after that (INCREASED from 5 minutes)
         if current_time - self.last_detailed_log >= self.detailed_log_interval:
             self.last_detailed_log = current_time
             return True
@@ -162,26 +220,29 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             total_keys = len(self.raw_data)
             accessories_tracked = len([a for a in self.parsed_data.get('accessory_sensors', {}).values() if a.get('enabled')])
             
-            brief_msg = (f"Update #{self.update_count}: Battery={battery}%, "
+            # Add RestConnect status
+            rest_status = "🌐" if self._rest_client and self._rest_client.is_connected else "📱"
+            
+            brief_msg = (f"Update #{self.update_count}: {rest_status} Battery={battery}%, "
                         f"Speed={clean_speed}, Keys={keys_found}/{len(MONITORED_KEYS)}, "
                         f"Total={total_keys}, Accessories={accessories_tracked}")
             
             self.debug_logger.info(brief_msg)
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        """Fetch data from Eufy API."""
+        """Fetch data from Eufy API using RestConnect."""
         try:
             self.update_count += 1
             do_detailed = self._should_do_detailed_logging()
             
             if do_detailed:
                 self._debug_log("=" * 60, "info")
-                self._debug_log(f"=== EUFY X10 DETAILED UPDATE #{self.update_count} ===", "info")
+                self._debug_log(f"=== EUFY X10 RESTCONNECT UPDATE #{self.update_count} ===", "info")
                 self._debug_log(f"=== Next detailed log in {self.detailed_log_interval/60:.1f} minutes ===", "info")
                 self._debug_log("=" * 60, "info")
             
-            # Fetch real data from Eufy API
-            await self._fetch_eufy_data()
+            # Fetch data using RestConnect (preferred) or fallback to basic login
+            await self._fetch_eufy_data_with_rest()
             
             # Process the data
             await self._process_sensor_data()
@@ -196,7 +257,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             self.last_update = time.time()
             
             if do_detailed:
-                self._debug_log(f"✅ Detailed update #{self.update_count} completed successfully", "info")
+                self._debug_log(f"✅ RestConnect update #{self.update_count} completed successfully", "info")
             else:
                 # Brief status update
                 self._log_brief_status()
@@ -215,31 +276,57 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             
             raise UpdateFailed(f"Error communicating with API: {err}")
 
-    async def _fetch_eufy_data(self):
-        """Fetch data from the Eufy API."""
+    async def _fetch_eufy_data_with_rest(self):
+        """Fetch data using RestConnect client with fallback to basic login."""
         try:
             do_detailed = self._should_do_detailed_logging()
             
             if do_detailed:
-                self._debug_log("🔄 Fetching data from Eufy API...", "info")
+                self._debug_log("🔄 Fetching data using RestConnect...", "info")
             
-            # Import here to avoid circular imports
-            from .controllers.login import EufyLogin
+            # Try RestConnect first
+            if self._rest_client and self._rest_client.is_connected:
+                try:
+                    await self._rest_client.updateDevice()
+                    rest_data = self._rest_client.get_raw_data()
+                    
+                    if rest_data:
+                        if do_detailed:
+                            self._debug_log(f"✅ RestConnect data fetch successful - {len(rest_data)} keys", "info")
+                            self._debug_log(f"📊 RestConnect DPS keys: {list(rest_data.keys())}", "info")
+                        
+                        self.raw_data = rest_data
+                        
+                        # Log raw data to separate file (only during detailed logging)
+                        if do_detailed and self.debug_logger:
+                            self.debug_logger.log_raw_data(rest_data)
+                        
+                        return  # Success with RestConnect
+                    else:
+                        self._debug_log("⚠️ RestConnect returned no data, falling back to basic login", "warning", force=True)
+                        
+                except Exception as rest_error:
+                    self._debug_log(f"⚠️ RestConnect failed: {rest_error}, falling back to basic login", "warning", force=True)
             
-            # Create login instance if not exists
+            # Fallback to basic login method
+            if do_detailed:
+                self._debug_log("🔄 Using fallback basic login method...", "info")
+            
+            # Ensure basic login is available
             if not self._eufy_login:
+                from .controllers.login import EufyLogin
                 self._eufy_login = EufyLogin(
                     username=self.username,
                     password=self.password,
                     openudid=self.openudid
                 )
             
-            # Get device data from real API
+            # Get device data from basic API
             devices = await self._eufy_login.init()
             
             if devices:
                 if do_detailed:
-                    self._debug_log(f"✅ API data fetch successful - {len(devices)} devices found", "info")
+                    self._debug_log(f"✅ Fallback API data fetch successful - {len(devices)} devices found", "info")
                 
                 # Find our specific device
                 target_device = None
@@ -253,27 +340,26 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     dps_data = target_device.get('dps', {})
                     if dps_data:
                         if do_detailed:
-                            self._debug_log(f"📊 DPS data keys found: {list(dps_data.keys())}", "info")
-                        self.raw_data = dps_data  # Use real data only
+                            self._debug_log(f"📊 Fallback DPS data keys found: {list(dps_data.keys())}", "info")
+                        self.raw_data = dps_data
                         
                         # Log raw data to separate file (only during detailed logging)
                         if do_detailed and self.debug_logger:
                             self.debug_logger.log_raw_data(dps_data)
                     else:
                         self._debug_log("⚠️ No DPS data found for device", "warning", force=True)
-                        # Clear raw data if no DPS data available
                         self.raw_data = {}
                 else:
                     error_msg = f"Target device {self.device_id} not found in device list"
                     self._debug_log(f"❌ {error_msg}", "error", force=True)
                     raise UpdateFailed(error_msg)
             else:
-                error_msg = "No devices returned from API"
+                error_msg = "No devices returned from fallback API"
                 self._debug_log(f"❌ {error_msg}", "error", force=True)
                 raise UpdateFailed(error_msg)
                 
         except Exception as e:
-            self._debug_log(f"❌ Failed to fetch Eufy data: {e}", "error", force=True)
+            self._debug_log(f"❌ Failed to fetch Eufy data with RestConnect: {e}", "error", force=True)
             # Clear raw data on API failure
             self.raw_data = {}
             raise
@@ -283,7 +369,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         do_detailed = self._should_do_detailed_logging()
         
         if do_detailed:
-            self._debug_log("🔧 Processing sensor data (cleaned version)...", "info")
+            self._debug_log("🔧 Processing sensor data (RestConnect + cleaned version)...", "info")
         
         # Only process if we have raw data
         if not self.raw_data:
@@ -300,6 +386,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 "update_count": self.update_count,
                 "consecutive_failures": self._consecutive_failures,
                 "accessory_sensors": {},
+                "data_source": "RestConnect" if self._rest_client and self._rest_client.is_connected else "Basic Login",
             }
             return
         
@@ -318,11 +405,14 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             "update_count": self.update_count,
             "consecutive_failures": self._consecutive_failures,
             "accessory_sensors": {},  # Will be populated by _process_accessory_data
+            "data_source": "RestConnect" if self._rest_client and self._rest_client.is_connected else "Basic Login",
         }
         
         # Detailed processing summary (only during detailed logging)
         if do_detailed:
+            data_source_emoji = "🌐" if self._rest_client and self._rest_client.is_connected else "📱"
             self._debug_log("📊 CLEANED SENSOR DATA PROCESSED:", "info")
+            self._debug_log(f"   {data_source_emoji} Data Source: {self.parsed_data['data_source']}", "info")
             self._debug_log(f"   🔋 Battery: {self.parsed_data['battery']}", "info")
             self._debug_log(f"   ⚡ Clean Speed: {self.parsed_data['clean_speed']}", "info")
             self._debug_log(f"   🔑 Keys Found: {self.parsed_data['monitored_keys_found']}", "info")
@@ -408,12 +498,13 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             self.parsed_data["accessory_sensors"] = {}
 
     async def _extract_accessory_value(self, key: str, byte_position: int, sensor_id: str) -> Optional[int]:
-        """Extract accessory value from specific key and byte position."""
+        """Extract accessory value from specific key and byte position with enhanced debugging."""
         try:
             if key not in self.raw_data:
                 return None
             
             raw_value = self.raw_data[key]
+            do_detailed = self._should_do_detailed_logging()
             
             # Handle base64 encoded data
             if isinstance(raw_value, str) and len(raw_value) > 10:
@@ -424,16 +515,24 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     if byte_position < len(binary_data):
                         byte_value = binary_data[byte_position]
                         
+                        # Enhanced debugging for accessory extraction
+                        if do_detailed:
+                            self._debug_log(f"🔍 {sensor_id}: Key {key}, Byte {byte_position} = {byte_value} (hex: 0x{byte_value:02x})", "info")
+                        
                         # Convert to percentage (different methods for different sensors)
                         if sensor_id == "water_tank_level":
                             # Special handling for water tank - try different scaling
                             percentage = min(100, int((byte_value * 100) / 255))
+                            if do_detailed:
+                                self._debug_log(f"🚿 Water tank scaling: {byte_value}/255 * 100 = {percentage}%", "info")
                         else:
                             # For other accessories, assume direct percentage
                             percentage = min(100, max(0, byte_value))
                         
                         return percentage
                     else:
+                        if do_detailed:
+                            self._debug_log(f"⚠️ {sensor_id}: Byte position {byte_position} beyond data length {len(binary_data)}", "warning")
                         return None
                         
                 except Exception as e:
@@ -519,9 +618,18 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         """Validate the current accessory configuration."""
         return await self.accessory_manager.validate_config()
 
+    def get_rest_connection_info(self) -> Dict[str, Any]:
+        """Get RestConnect connection information."""
+        if self._rest_client:
+            return self._rest_client.get_connection_info()
+        return {
+            'is_connected': False,
+            'error': 'RestConnect not initialized'
+        }
+
     async def async_shutdown(self):
         """Shutdown the coordinator."""
-        self._debug_log("🛑 Coordinator shutdown", "info", force=True)
+        self._debug_log("🛑 Coordinator shutdown with RestConnect", "info", force=True)
         
         # Save final accessory data if any changes detected
         if self.previous_accessory_data:
@@ -531,23 +639,18 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 self._debug_log(f"⚠️ Failed to save final accessory state: {e}", "warning", force=True)
         
+        # Shutdown RestConnect client
+        if self._rest_client:
+            try:
+                await self._rest_client.stop_polling()
+                self._debug_log("✅ RestConnect client stopped", "info", force=True)
+            except Exception as e:
+                self._debug_log(f"❌ Error stopping RestConnect: {e}", "error", force=True)
+        
+        # Shutdown basic login client
         if self._eufy_login and hasattr(self._eufy_login, 'eufyApi'):
             try:
                 if hasattr(self._eufy_login.eufyApi, 'close'):
                     await self._eufy_login.eufyApi.close()
                 self._debug_log("✅ Eufy API connection closed", "info", force=True)
-            except Exception as e:
-                self._debug_log(f"❌ Error closing Eufy API: {e}", "error", force=True)
-        
-        self._debug_log(f"📊 Final statistics: {self.update_count} updates processed", "info", force=True)
-        if self._last_successful_update:
-            self._debug_log(f"✅ Last successful update: {time.ctime(self._last_successful_update)}", "info", force=True)
-        
-        accessories_tracked = len(self.accessory_sensors)
-        self._debug_log(f"🔧 Accessory sensors tracked: {accessories_tracked}", "info", force=True)
-        
-        # Stop the async debug logger
-        if self.debug_logger:
-            await self.debug_logger.stop()
-        
-        self._debug_log("🏁 Coordinator shutdown complete", "info", force=True)
+            
