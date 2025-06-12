@@ -167,9 +167,6 @@ This is a debugging integration intended for development purposes. Use at your o
 - [GitHub Issues](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/issues)
 - [GitHub Discussions](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/discussions)
 
-## 🙏 Acknowledgments
-
-Based on research into the NEW Android Eufy app protocol and REST API data sources.
 
 ## to do list
 rewrite the sensor search code so that found working sensors are no longer searched for.
