@@ -340,7 +340,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}")
 
     async def _fetch_eufy_data_with_rest(self) -> None:
-        """Fetch data from Eufy API using RestConnect (preferred) or basic login fallback."""
+        """FIXED: Fetch data from Eufy API using RestConnect (preferred) or basic login fallback."""
         try:
             data_source = "Unknown"
             
@@ -349,8 +349,9 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 try:
                     self._debug_log("🌐 Attempting RestConnect data fetch...", "debug")
                     
-                    # Use RestConnect to get enhanced data
-                    rest_data = await self._rest_client.get_device_data()
+                    # FIXED: Use correct RestConnect methods
+                    await self._rest_client.updateDevice()  # This updates the device data
+                    rest_data = self._rest_client.get_raw_data()  # This gets the raw data
                     
                     if rest_data:
                         self.raw_data = rest_data
@@ -371,11 +372,11 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 if not self._eufy_login:
                     raise Exception("No authentication method available")
                 
-                # Get device data using basic login
-                device_data = await self._eufy_login.get_device_data(self.device_id)
+                # FIXED: Use correct EufyLogin method
+                device_data = await self._eufy_login.getMqttDevice(self.device_id)  # This gets device data
                 
-                if device_data:
-                    self.raw_data = device_data
+                if device_data and 'dps' in device_data:
+                    self.raw_data = device_data['dps']  # Extract DPS data
                     data_source = "📱 Basic Login"
                     self._debug_log(f"✅ Basic login fetch successful: {len(self.raw_data)} keys", "debug")
                 else:
@@ -671,24 +672,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 }
             
             # Get RestConnect status
-            return {
-                "is_connected": True,
-                "connection_mode": "RestConnect Enhanced",
-                "last_update": self._last_successful_update,
-                "update_count": self.update_count,
-                "keys_received": len(self.raw_data),
-                "has_auth_token": hasattr(self._rest_client, 'access_token'),
-                "has_user_center_token": hasattr(self._rest_client, 'user_center_token'),
-                "has_gtoken": hasattr(self._rest_client, 'gtoken'),
-                "device_id": self.device_id,
-                "user_id": getattr(self._rest_client, 'user_id', None),
-                "api_endpoints_available": {
-                    "device_data": True,
-                    "accessory_data": True,
-                    "consumable_data": True,
-                    "runtime_data": True
-                }
-            }
+            return self._rest_client.get_connection_info()
             
         except Exception as e:
             self._debug_log(f"❌ Error getting RestConnect info: {e}", "error")
@@ -786,8 +770,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         # Shutdown RestConnect client
         if self._rest_client:
             try:
-                if hasattr(self._rest_client, 'disconnect'):
-                    await self._rest_client.disconnect()
+                await self._rest_client.stop_polling()
                 self._debug_log("✅ RestConnect client disconnected", "info", force=True)
             except Exception as e:
                 self._debug_log(f"❌ Error disconnecting RestConnect: {e}", "error", force=True)
@@ -795,8 +778,8 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         # Shutdown EufyLogin
         if self._eufy_login:
             try:
-                if hasattr(self._eufy_login, 'disconnect'):
-                    await self._eufy_login.disconnect()
+                # EufyLogin doesn't have disconnect method - just clean references
+                self._eufy_login = None
                 self._debug_log("✅ EufyLogin disconnected", "info", force=True)
             except Exception as e:
                 self._debug_log(f"❌ Error disconnecting EufyLogin: {e}", "error", force=True)
