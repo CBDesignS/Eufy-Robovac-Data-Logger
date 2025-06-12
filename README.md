@@ -248,20 +248,6 @@ This is a debugging integration intended for development purposes. RestConnect p
 - [GitHub Issues](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/issues)
 - [GitHub Discussions](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/discussions)
 
-## 🙏 Acknowledgments
-
-## 🙏 Acknowledgments
-
-Special thanks to the developers who made this integration possible:
-
-- **[jeppesens](https://github.com/jeppesens/eufy-clean)** - For his excellent work cleaning up the Login, Authentication, Device ID handling and removing unused code. His refined codebase provided the solid foundation for this RestConnect implementation.
-
-- **[Martijnpoppen](https://github.com/martijnpoppen/eufy-clean)** - For the hard work in producing the original code to make all this happen. Without his initial research and reverse engineering of the Eufy API, none of this would have been possible.
-
-This RestConnect edition builds upon their outstanding contributions to bring enhanced debugging capabilities and improved data collection to the Eufy robovac community.
-
-Based on research into the NEW Android Eufy app protocol and REST API data sources, with enhanced RestConnect support for improved debugging capabilities.
-
 ## 📝 Changelog
 
 ### v2.1.0 - RestConnect Edition
