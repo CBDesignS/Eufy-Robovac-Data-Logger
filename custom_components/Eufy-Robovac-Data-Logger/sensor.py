@@ -1,4 +1,4 @@
-"""Sensor platform for Eufy Robovac Data Logger integration - RestConnect Version."""
+"""Sensor platform for Eufy Robovac Data Logger integration - Investigation Mode Edition."""
 import logging
 from typing import Any, Dict, Optional
 
@@ -25,7 +25,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Eufy Robovac Debug sensors with RestConnect."""
+    """Set up Eufy Robovac Debug sensors with Investigation Mode."""
     coordinator: EufyX10DebugCoordinator = hass.data[DOMAIN][entry.entry_id]
     
     # Core sensors (working and reliable)
@@ -38,6 +38,11 @@ async def async_setup_entry(
         EufyRobovacDebugRestConnectSensor(coordinator),       # 🆕 RestConnect status
     ]
     
+    # NEW: Add Investigation Status Sensor if investigation mode enabled
+    if coordinator.investigation_mode:
+        entities.append(EufyRobovacInvestigationStatusSensor(coordinator))
+        _LOGGER.info("🔍 Investigation Status Sensor added - Investigation Mode active")
+    
     # Add dynamic accessory sensors from JSON configuration
     try:
         accessory_sensors = await coordinator.accessory_manager.get_enabled_sensors()
@@ -47,8 +52,9 @@ async def async_setup_entry(
                 entities.append(EufyRobovacDynamicAccessorySensor(coordinator, sensor_id, sensor_config))
                 _LOGGER.debug("🔧 Added dynamic accessory sensor: %s", sensor_config.get('name'))
         
-        _LOGGER.info("🏭 Setting up %d total sensors (%d core + %d accessories) with RestConnect for device %s", 
-                    len(entities), 6, len(accessory_sensors), coordinator.device_id)
+        investigation_status = " + Investigation Mode" if coordinator.investigation_mode else ""
+        _LOGGER.info("🏭 Setting up %d total sensors (%d core + %d accessories)%s with RestConnect for device %s", 
+                    len(entities), 6 + (1 if coordinator.investigation_mode else 0), len(accessory_sensors), investigation_status, coordinator.device_id)
     
     except Exception as e:
         _LOGGER.error("❌ Failed to load accessory sensors: %s", e)
@@ -71,8 +77,8 @@ class EufyRobovacDebugBaseSensor(CoordinatorEntity, SensorEntity):
             identifiers={(DOMAIN, self.device_id)},
             name=f"Eufy Robovac Debug {self.device_id}",
             manufacturer="Eufy",
-            model="Robovac (Debug + RestConnect)",
-            sw_version="Debug v2.1.0 - RestConnect + Accessory Config",
+            model="Robovac (Debug + RestConnect + Investigation)",
+            sw_version="Debug v2.1.0 - RestConnect + Accessory Config + Investigation Mode",
         )
         
         _LOGGER.debug("🔧 Initialized %s sensor for device %s with RestConnect", sensor_type, self.device_id)
@@ -81,6 +87,103 @@ class EufyRobovacDebugBaseSensor(CoordinatorEntity, SensorEntity):
     def available(self) -> bool:
         """Return if entity is available."""
         return self.coordinator.last_update_success
+
+
+class EufyRobovacInvestigationStatusSensor(EufyRobovacDebugBaseSensor):
+    """NEW: Investigation Mode Status and Control Sensor."""
+
+    def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
+        """Initialize the investigation status sensor."""
+        super().__init__(coordinator, "investigation_status")
+        self._attr_name = f"Eufy Robovac Investigation Status"
+        self._attr_icon = "mdi:magnify"
+
+    @property
+    def native_value(self) -> str:
+        """Return investigation status."""
+        if not self.coordinator.investigation_mode:
+            return "Disabled"
+        
+        status = self.coordinator.get_investigation_status()
+        
+        if status.get("baseline_captured", False):
+            return "Baseline Captured"
+        elif status.get("key180_available", False):
+            return "Monitoring"
+        else:
+            return "Waiting for Data"
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return investigation status and controls."""
+        if not self.coordinator.investigation_mode:
+            return {
+                "investigation_mode": False,
+                "status": "Investigation mode not enabled",
+                "purpose": "🔍 Key 180 comprehensive analysis would be available if enabled"
+            }
+        
+        status = self.coordinator.get_investigation_status()
+        
+        attrs = {
+            "investigation_mode": True,
+            "session_id": status.get("session_id"),
+            "baseline_captured": status.get("baseline_captured", False),
+            "key180_available": status.get("key180_available", False),
+            "investigation_directory": status.get("investigation_directory"),
+            "update_count": status.get("update_count", 0),
+            "last_update": self.coordinator.data.get("last_update"),
+            "purpose": "🔍 Key 180 Investigation Mode - Comprehensive byte analysis for accessory wear detection",
+        }
+        
+        # Add Key 180 data info
+        if "180" in self.coordinator.raw_data:
+            key180_data = self.coordinator.raw_data["180"]
+            attrs["key180_data_length"] = len(key180_data)
+            attrs["key180_preview"] = f"{key180_data[:20]}..." if len(key180_data) > 20 else key180_data
+            attrs["key180_status"] = "✅ Available"
+        else:
+            attrs["key180_status"] = "❌ Missing"
+            attrs["key180_data_length"] = 0
+        
+        # Status indicators and instructions
+        if status.get("baseline_captured", False):
+            attrs["status_emoji"] = "🎯"
+            attrs["next_step"] = "Run cleaning cycle, then use post-cleaning capture service"
+            attrs["workflow_status"] = "Ready for cleaning cycle testing"
+        elif status.get("key180_available", False):
+            attrs["status_emoji"] = "🔍" 
+            attrs["next_step"] = "Use baseline capture service to start investigation"
+            attrs["workflow_status"] = "Ready to capture baseline"
+        else:
+            attrs["status_emoji"] = "⏳"
+            attrs["next_step"] = "Wait for Key 180 data to become available"
+            attrs["workflow_status"] = "Waiting for data"
+        
+        # Investigation workflow instructions
+        attrs["workflow_instructions"] = [
+            "1. Capture baseline before cleaning",
+            "2. Run a room cleaning cycle", 
+            "3. Capture post-cleaning data after docking",
+            "4. Check investigation files for byte changes",
+            "5. Generate session summary for analysis"
+        ]
+        
+        # Manual capture service info
+        attrs["available_services"] = [
+            "eufy_robovac_data_logger.capture_investigation_baseline",
+            "eufy_robovac_data_logger.capture_investigation_post_cleaning",
+            "eufy_robovac_data_logger.generate_investigation_summary"
+        ]
+        
+        # File info
+        investigation_dir = status.get("investigation_directory")
+        if investigation_dir:
+            attrs["files_location"] = investigation_dir
+            attrs["file_pattern"] = "key180_*.json"
+            attrs["session_files"] = f"Files with session ID: {status.get('session_id')}"
+        
+        return attrs
 
 
 class EufyRobovacDebugBatterySensor(EufyRobovacDebugBaseSensor):
@@ -215,6 +318,11 @@ class EufyRobovacDebugRawDataSensor(EufyRobovacDebugBaseSensor):
             "purpose": f"Complete API data from {data_source}",
         }
         
+        # Add investigation mode indicator
+        if self.coordinator.investigation_mode:
+            attrs["investigation_mode"] = "🔍 Active - Key 180 being logged"
+            attrs["key180_available"] = "180" in self.coordinator.raw_data
+        
         # Add first 15 characters of each raw value for debugging (prevent overflow)
         for key, value in list(self.coordinator.raw_data.items())[:20]:  # Limit to prevent overflow
             if isinstance(value, str) and len(value) > 20:
@@ -263,6 +371,11 @@ class EufyRobovacDebugMonitoringSensor(EufyRobovacDebugBaseSensor):
             "update_count": self.coordinator.data.get("update_count"),
             "purpose": f"Track hardcoded key discovery via {data_source}",
         }
+        
+        # Add investigation mode Key 180 tracking
+        if self.coordinator.investigation_mode:
+            attrs["investigation_mode"] = "🔍 Active"
+            attrs["key180_tracking"] = "✅ Enabled" if "180" in found_keys else "❌ Key 180 Missing"
         
         # Add coverage emoji
         if coverage_pct >= 90:
@@ -316,6 +429,10 @@ class EufyRobovacDebugAccessoryManagerSensor(EufyRobovacDebugBaseSensor):
             "purpose": "🔧 Manage accessory sensors from JSON config",
         }
         
+        # Add investigation mode connection
+        if self.coordinator.investigation_mode:
+            attrs["investigation_connection"] = "🔍 Key 180 analysis helps find correct byte positions for accessories"
+        
         # Add individual accessory status
         for sensor_id, sensor_data in accessory_sensors.items():
             attrs[f"{sensor_id}_life"] = f"{sensor_data.get('configured_life', 0)}%"
@@ -367,6 +484,10 @@ class EufyRobovacDebugRestConnectSensor(EufyRobovacDebugBaseSensor):
             "update_count": self.coordinator.data.get("update_count"),
             "purpose": "Monitor REST API connection status",
         }
+        
+        # Add investigation mode indicator
+        if self.coordinator.investigation_mode:
+            attrs["investigation_mode"] = "🔍 Active - Enhanced data collection for Key 180 analysis"
         
         # Get RestConnect detailed info if available
         try:
@@ -469,6 +590,10 @@ class EufyRobovacDynamicAccessorySensor(EufyRobovacDebugBaseSensor):
             "notes": accessory_data.get("notes", ""),
             "last_updated": accessory_data.get("last_updated"),
         }
+        
+        # Add investigation mode connection
+        if self.coordinator.investigation_mode:
+            attrs["investigation_help"] = "🔍 Use investigation mode files to verify this accessory's byte position"
         
         # Status indicators
         current_life = accessory_data.get("configured_life", 100)

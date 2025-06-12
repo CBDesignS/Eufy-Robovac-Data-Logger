@@ -1,0 +1,164 @@
+# Eufy Robovac Data Logger Services - Investigation Mode Edition
+# Services for manual control of investigation mode data capture
+
+capture_investigation_baseline:
+  name: Capture Investigation Baseline
+  description: >
+    Manually capture baseline Key 180 data before running a cleaning cycle.
+    Use this to establish a reference point for accessory wear detection.
+  icon: mdi:target
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the Eufy robovac to capture baseline for
+      required: true
+      selector:
+        text:
+      example: "T8213P1234567890"
+
+capture_investigation_post_cleaning:
+  name: Capture Post-Cleaning Data
+  description: >
+    Manually capture Key 180 data after a cleaning cycle has completed.
+    Use this immediately after the robot has docked to detect accessory wear changes.
+  icon: mdi:clipboard-check
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the Eufy robovac to capture post-cleaning data for
+      required: true
+      selector:
+        text:
+      example: "T8213P1234567890"
+
+generate_investigation_summary:
+  name: Generate Investigation Summary
+  description: >
+    Generate a comprehensive summary of the current investigation session.
+    Creates a summary file with all captured data and analysis recommendations.
+  icon: mdi:file-document-outline
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the Eufy robovac to generate summary for
+      required: true
+      selector:
+        text:
+      example: "T8213P1234567890"
+
+force_investigation_update:
+  name: Force Investigation Update
+  description: >
+    Force an immediate investigation mode data capture regardless of normal timing.
+    Useful for testing or capturing data at specific moments.
+  icon: mdi:refresh
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the Eufy robovac to force update
+      required: true
+      selector:
+        text:
+      example: "T8213P1234567890"
+    phase:
+      name: Investigation Phase
+      description: Specify the phase for this capture
+      required: false
+      default: "monitoring"
+      selector:
+        select:
+          options:
+            - "baseline"
+            - "post_cleaning"
+            - "monitoring"
+            - "manual_test"
+
+reload_accessory_config:
+  name: Reload Accessory Configuration
+  description: >
+    Reload the accessory sensor configuration from the JSON file.
+    Use this after editing the sensors.json file to apply changes without restarting.
+  icon: mdi:reload
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the Eufy robovac to reload config for
+      required: true
+      selector:
+        text:
+      example: "T8213P1234567890"
+
+update_accessory_life:
+  name: Update Accessory Life
+  description: >
+    Manually update the life percentage for a specific accessory.
+    Use this to keep accessory wear tracking accurate based on real usage.
+  icon: mdi:percent
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the Eufy robovac
+      required: true
+      selector:
+        text:
+      example: "T8213P1234567890"
+    accessory_id:
+      name: Accessory ID
+      description: The ID of the accessory to update (e.g., rolling_brush, side_brush, filter)
+      required: true
+      selector:
+        text:
+      example: "rolling_brush"
+    life_percentage:
+      name: Life Percentage
+      description: New life remaining percentage (0-100)
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+      example: 85
+    notes:
+      name: Notes
+      description: Optional notes about this update (maintenance performed, etc.)
+      required: false
+      selector:
+        text:
+        multiline: true
+      example: "Cleaned rolling brush, removed hair tangles"
+
+debug_key_analysis:
+  name: Debug Key Analysis
+  description: >
+    Perform detailed analysis of a specific API key for debugging purposes.
+    Useful for investigating new keys or troubleshooting data issues.
+  icon: mdi:bug
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the Eufy robovac
+      required: true
+      selector:
+        text:
+      example: "T8213P1234567890"
+    key:
+      name: API Key
+      description: The API key to analyze (e.g., 180, 163, 167)
+      required: true
+      selector:
+        text:
+      example: "180"
+    analysis_type:
+      name: Analysis Type
+      description: Type of analysis to perform
+      required: false
+      default: "complete"
+      selector:
+        select:
+          options:
+            - "complete"
+            - "byte_dump"
+            - "percentage_scan"
+            - "change_detection"
+            - "accessory_hunt"
