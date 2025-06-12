@@ -1,5 +1,5 @@
 {
-  "domain": "Eufy-Robovac-Data-Logger",
+  "domain": "eufy_robovac_data_logger",
   "name": "Eufy Robovac Data Logger",
   "version": "0.0.1",
   "documentation": "https://github.com/CBDesignS/Eufy-Robovac-Data-Logger",
