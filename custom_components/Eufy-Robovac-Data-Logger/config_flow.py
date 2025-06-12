@@ -1,4 +1,4 @@
-"""Config flow for Eufy Robovac Data Logger integration - FIXED VERSION."""
+"""Config flow for Eufy Robovac Data Logger integration - Investigation Mode Edition."""
 import logging
 import voluptuous as vol
 import uuid
@@ -8,7 +8,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 
-from .const import DOMAIN, CONF_DEBUG_MODE
+from .const import DOMAIN, CONF_DEBUG_MODE, CONF_INVESTIGATION_MODE
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,12 +17,13 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
         vol.Optional(CONF_DEBUG_MODE, default=True): bool,
+        vol.Optional(CONF_INVESTIGATION_MODE, default=False): bool,  # NEW: Investigation mode
     }
 )
 
 
 class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Eufy X10 Debugging."""
+    """Handle a config flow for Eufy X10 Debugging with Investigation Mode."""
 
     VERSION = 1
 
@@ -52,7 +53,15 @@ class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 # Try to login and discover devices
                 try:
-                    _LOGGER.info("🚀 EUFY X10 DEBUG: Starting login and device discovery")
+                    investigation_mode = user_input.get(CONF_INVESTIGATION_MODE, False)
+                    debug_mode = user_input.get(CONF_DEBUG_MODE, True)
+                    
+                    _LOGGER.info("🚀 EUFY X10 DEBUGGING: Starting login and device discovery")
+                    _LOGGER.info("🔧 Debug mode: %s", debug_mode)
+                    _LOGGER.info("🔍 Investigation mode: %s", investigation_mode)
+                    
+                    if investigation_mode:
+                        _LOGGER.info("🎯 INVESTIGATION MODE ENABLED - Key 180 comprehensive logging activated")
                     
                     # Create login instance with generated UDID
                     self.openudid = f"ha_debug_{str(uuid.uuid4())[:8]}"
@@ -80,6 +89,9 @@ class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         
                         _LOGGER.info("✅ Single device found: %s (%s)", device_name, device_id)
                         
+                        if investigation_mode:
+                            _LOGGER.info("🔍 Investigation mode will create detailed Key 180 analysis files")
+                        
                         # Check if already configured
                         await self.async_set_unique_id(device_id)
                         self._abort_if_unique_id_configured()
@@ -93,12 +105,15 @@ class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             "device_model": device.get('deviceModel', 'T8213'),
                             "openudid": self.openudid,
                             CONF_DEBUG_MODE: user_input.get(CONF_DEBUG_MODE, True),
+                            CONF_INVESTIGATION_MODE: user_input.get(CONF_INVESTIGATION_MODE, False),  # NEW
                         }
                         
                         _LOGGER.info("🎯 Creating config entry for: %s", device_name)
                         
+                        title_suffix = " (Investigation)" if investigation_mode else ""
+                        
                         return self.async_create_entry(
-                            title=f"Eufy X10 Debug - {device_name}",
+                            title=f"Eufy X10 Debug - {device_name}{title_suffix}",
                             data=entry_data,
                         )
                     else:
@@ -121,6 +136,9 @@ class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
+            description_placeholders={
+                "investigation_mode_description": "🔍 Investigation Mode: Enables comprehensive Key 180 logging for accessory wear detection research"
+            }
         )
 
     async def async_step_device_selection(
@@ -142,6 +160,10 @@ class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 
                 _LOGGER.info("🎯 User selected device: %s (%s)", device_name, device_id)
                 
+                investigation_mode = self.user_input.get(CONF_INVESTIGATION_MODE, False)
+                if investigation_mode:
+                    _LOGGER.info("🔍 Investigation mode enabled for selected device")
+                
                 # Check if already configured
                 await self.async_set_unique_id(device_id)
                 self._abort_if_unique_id_configured()
@@ -155,12 +177,15 @@ class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "device_model": selected_device.get('deviceModel', 'T8213'),
                     "openudid": self.openudid,
                     CONF_DEBUG_MODE: self.user_input.get(CONF_DEBUG_MODE, True),
+                    CONF_INVESTIGATION_MODE: self.user_input.get(CONF_INVESTIGATION_MODE, False),  # NEW
                 }
                 
                 _LOGGER.info("✅ Creating config entry for selected device: %s", device_name)
                 
+                title_suffix = " (Investigation)" if investigation_mode else ""
+                
                 return self.async_create_entry(
-                    title=f"Eufy X10 Debug - {device_name}",
+                    title=f"Eufy X10 Debug - {device_name}{title_suffix}",
                     data=entry_data,
                 )
         
@@ -188,7 +213,7 @@ class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class EufyX10DebugOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for Eufy X10 Debugging."""
+    """Handle options for Eufy X10 Debugging with Investigation Mode."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
@@ -199,11 +224,28 @@ class EufyX10DebugOptionsFlow(config_entries.OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
-            _LOGGER.info("💾 Saving debug options: debug_mode=%s", user_input.get(CONF_DEBUG_MODE))
+            debug_mode = user_input.get(CONF_DEBUG_MODE)
+            investigation_mode = user_input.get(CONF_INVESTIGATION_MODE)
+            
+            _LOGGER.info("💾 Saving debug options: debug_mode=%s, investigation_mode=%s", 
+                        debug_mode, investigation_mode)
+            
+            if investigation_mode:
+                _LOGGER.info("🔍 Investigation mode enabled - Key 180 comprehensive logging will activate")
+            
             return self.async_create_entry(title="", data=user_input)
 
-        current_debug_mode = self.config_entry.options.get(CONF_DEBUG_MODE, True)
-        _LOGGER.debug("⚙️ Showing options form, current debug_mode=%s", current_debug_mode)
+        current_debug_mode = self.config_entry.options.get(
+            CONF_DEBUG_MODE, 
+            self.config_entry.data.get(CONF_DEBUG_MODE, True)
+        )
+        current_investigation_mode = self.config_entry.options.get(
+            CONF_INVESTIGATION_MODE,
+            self.config_entry.data.get(CONF_INVESTIGATION_MODE, False)
+        )
+        
+        _LOGGER.debug("⚙️ Showing options form, current debug_mode=%s, investigation_mode=%s", 
+                     current_debug_mode, current_investigation_mode)
 
         return self.async_show_form(
             step_id="init",
@@ -213,6 +255,13 @@ class EufyX10DebugOptionsFlow(config_entries.OptionsFlow):
                         CONF_DEBUG_MODE,
                         default=current_debug_mode,
                     ): bool,
+                    vol.Optional(
+                        CONF_INVESTIGATION_MODE,
+                        default=current_investigation_mode,
+                    ): bool,
                 }
             ),
+            description_placeholders={
+                "investigation_mode_help": "🔍 Investigation Mode creates detailed Key 180 analysis files for accessory wear research. Enable when you want to capture before/after cleaning data for offline analysis."
+            }
         )
