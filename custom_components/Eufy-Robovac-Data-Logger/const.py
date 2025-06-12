@@ -1,7 +1,7 @@
 """Constants for Eufy Robovac Data Logger integration with RestConnect and Investigation Mode support."""
 
 # Integration constants
-DOMAIN = "eufy_robovac_data_logger"
+DOMAIN = "eufy-robovac-data-logger"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password" 
 CONF_DEBUG_MODE = "debug_mode"
