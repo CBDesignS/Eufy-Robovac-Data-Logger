@@ -1,20 +1,89 @@
-# Eufy Robovac API Data Logger Integration - RestConnect Edition
+# Eufy Robovac API Data Logger Integration - RestConnect + Investigation Edition
 
 [![HACS Custom Repository](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger)
 [![GitHub Release](https://img.shields.io/github/release/CBDesignS/Eufy-Robovac-Data-Logger.svg)](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/releases)
 
-A Home Assistant custom component for debugging Eufy X10 Pro Omni REST API data with enhanced RestConnect support. This integration now includes advanced REST API endpoints for improved accessory tracking and debugging capabilities.
+A Home Assistant custom component for debugging Eufy X10 Pro Omni REST API data with enhanced RestConnect support and **Investigation Mode** for comprehensive Key 180 accessory wear analysis.
 
 ## 🎯 Purpose
 
-This integration focuses on debugging and logging the REST API data from Eufy X10 Pro Omni devices, with enhanced data collection through RestConnect:
+This integration focuses on debugging and logging the REST API data from Eufy X10 Pro Omni devices, with enhanced data collection through RestConnect and deep accessory analysis:
 
 - **🌐 RestConnect**: Advanced REST API client with multiple endpoint support
 - **📱 Fallback Mode**: Automatic fallback to basic login if RestConnect fails
+- **🔍 Investigation Mode**: Complete Key 180 byte-by-byte analysis for accessory wear research
 - **Key 163**: Battery level (NEW Android App - 100% accuracy)
 - **Key 167**: Water tank level
 - **Key 180**: Accessory wear data with enhanced byte-level analysis
 - **Keys 181-190**: Enhanced data from RestConnect endpoints
+
+## 🔍 Investigation Mode - NEW FEATURE
+
+**Investigation Mode** provides comprehensive Key 180 analysis for accessory wear detection research.
+
+### ⚙️ Enabling Investigation Mode
+
+**During Initial Setup (Recommended):**
+1. Settings → Devices & Services → Add Integration
+2. Search "Eufy Robovac Data Logger"
+3. Enter credentials
+4. **✅ Check "Investigation Mode"** 
+5. Complete setup
+
+**On Existing Integration:**
+1. Settings → Devices & Services → Find Integration → Configure
+2. **✅ Enable "Investigation Mode"**
+3. Save → **Restart Integration**
+
+### 📁 Investigation Files Location
+
+Files are automatically saved to:
+```
+/config/eufy_investigation/YOUR_DEVICE_ID/
+├── key180_baseline_TIMESTAMP.json      ← Pre-cleaning baseline
+├── key180_post_cleaning_TIMESTAMP.json ← Post-cleaning comparison  
+├── key180_monitoring_TIMESTAMP.json    ← Continuous monitoring
+└── session_summary_SESSION_ID.json     ← Analysis summaries
+```
+
+### 🎯 Investigation Workflow
+
+1. **Enable Investigation Mode** (see above)
+2. **Capture Baseline**: Before cleaning cycle
+3. **Run Cleaning**: 5-10 minute room clean
+4. **Capture Post-Cleaning**: After robot docks
+5. **Analyze Files**: Compare JSON files for byte changes
+
+### 🛠️ Investigation Services
+
+Use these services in Developer Tools → Services:
+
+```yaml
+# Capture baseline before cleaning
+service: eufy_robovac_data_logger.capture_investigation_baseline
+data:
+  device_id: "YOUR_DEVICE_ID"
+
+# Capture data after cleaning  
+service: eufy_robovac_data_logger.capture_investigation_post_cleaning
+data:
+  device_id: "YOUR_DEVICE_ID"
+
+# Generate session summary
+service: eufy_robovac_data_logger.generate_investigation_summary
+data:
+  device_id: "YOUR_DEVICE_ID"
+```
+
+### 📊 What Investigation Mode Captures
+
+- **Complete byte-by-byte analysis** of Key 180 payload
+- **Hex dumps** with position mapping
+- **Before/after cleaning comparisons** 
+- **Accessory wear change detection** (1-3 byte decreases)
+- **Structured JSON** for external analysis tools
+
+For detailed investigation analysis, see **[Investigation Mode Guide](INVESTIGATION.md)** *(coming soon)*
 
 ## 🙏 Acknowledgments
 
@@ -24,20 +93,22 @@ Special thanks to the developers who made this integration possible:
 
 - **[Martijnpoppen](https://github.com/martijnpoppen/eufy-clean)** - For the hard work in producing the original code to make all this happen. Without his initial research and reverse engineering of the Eufy API, none of this would have been possible.
 
-This RestConnect edition builds upon their outstanding contributions to bring enhanced debugging capabilities and improved data collection to the Eufy robovac community.
+This RestConnect + Investigation edition builds upon their outstanding contributions to bring enhanced debugging capabilities and comprehensive accessory wear analysis to the Eufy robovac community.
 
-## 🆕 What's New in RestConnect Edition
+## 🆕 What's New in RestConnect + Investigation Edition
 
 ### Enhanced Data Collection
 - **Multiple API Endpoints**: Access to device, accessory, consumable, and runtime data
 - **Smart Fallback**: Automatically falls back to basic login if REST endpoints fail
-- **Reduced Logging**: Detailed logs every 10 minutes to save space 1 full dps log and 1 full rest log
+- **Investigation Mode**: Complete Key 180 payload analysis for accessory research
+- **Reduced Logging**: Detailed logs every 10 minutes to save space
 - **Connection Status**: New sensor showing RestConnect vs Basic Login status
 
 ### Improved Accessory Tracking
 - **Enhanced Byte Analysis**: Better debugging of accessory wear data
 - **Multiple Data Sources**: Combines traditional DPS data with REST endpoint data
-- **Real-time Detection**: Shows when RestConnect provides additional data if and when it becomes active again !!
+- **Real-time Detection**: Shows when RestConnect provides additional data
+- **JSON Configuration**: User-editable accessory sensor configuration
 
 ## 📥 Installation
 
@@ -55,7 +126,7 @@ This RestConnect edition builds upon their outstanding contributions to bring en
 
 ### Manual Installation
 
-1. Copy the `custom_components/Eufy-Robovac-Data-Logger` folder to your `custom_components` directory
+1. Copy the `custom_components/eufy_robovac_data_logger` folder to your `custom_components` directory
 2. Restart Home Assistant
 3. Go to Configuration > Integrations > Add Integration > "Eufy Robovac Data Logger"
 
@@ -68,15 +139,17 @@ This RestConnect edition builds upon their outstanding contributions to bring en
    - **Username**: Your Eufy account username
    - **Password**: Your Eufy account password
    - **Debug Mode**: Enable verbose logging (recommended)
+   - **🔍 Investigation Mode**: Enable Key 180 comprehensive analysis
 
 The integration will automatically:
 - Initialize RestConnect for enhanced data collection
 - Fall back to basic login if RestConnect fails
 - Discover your devices and create appropriate sensors
+- Start Investigation Mode logging if enabled
 
 ## 📊 Sensors Created
 
-The integration creates 7 core sensors + dynamic accessory sensors:
+The integration creates 7-8 core sensors + dynamic accessory sensors:
 
 ### Core Sensors
 
@@ -105,11 +178,17 @@ The integration creates 7 core sensors + dynamic accessory sensors:
 - Status of JSON configuration system
 - Low-life accessory alerts
 
-#### 🆕 RestConnect Status Sensor (`sensor.eufy_x10_restconnect_status`)
+#### RestConnect Status Sensor (`sensor.eufy_x10_restconnect_status`)
 - **Connection Status**: Connected/Fallback Mode
 - **API Endpoints**: Status of all REST endpoints
 - **Authentication**: Token status indicators
 - **Performance**: Enhanced vs Standard data collection
+
+#### 🔍 Investigation Status Sensor (if Investigation Mode enabled)
+- **Investigation Status**: Baseline captured/Monitoring/Waiting
+- **Session Information**: Current investigation session details
+- **File Locations**: Where investigation files are stored
+- **Workflow Instructions**: Step-by-step investigation process
 
 ### Dynamic Accessory Sensors
 Automatically created from JSON configuration:
@@ -133,18 +212,35 @@ Automatically created from JSON configuration:
 - **Compatible**: Works with all Eufy devices
 - **Stable**: Automatic fallback if RestConnect fails
 
+## 🔧 Services Available
+
+Investigation Mode adds these services for manual control:
+
+### Investigation Services
+- `eufy_robovac_data_logger.capture_investigation_baseline`
+- `eufy_robovac_data_logger.capture_investigation_post_cleaning`
+- `eufy_robovac_data_logger.generate_investigation_summary`
+- `eufy_robovac_data_logger.force_investigation_update`
+
+### Configuration Services  
+- `eufy_robovac_data_logger.reload_accessory_config`
+- `eufy_robovac_data_logger.update_accessory_life`
+- `eufy_robovac_data_logger.debug_key_analysis`
+
 ## 🔍 Debugging Features
 
-### Reduced Logging Overhead
+### Investigation Mode Benefits
+- **🔬 Complete Analysis**: Byte-by-byte Key 180 payload examination
+- **📊 Structured Data**: JSON files perfect for external analysis
+- **🎯 Change Detection**: Automatic before/after comparison
+- **📁 Organized Storage**: Session-based file organization
+- **🧮 Significance Scoring**: Identifies meaningful byte changes
+
+### Enhanced Logging
 - **Detailed Logs**: Every 10 minutes (reduced from 5 minutes)
-- **First Update**: Only first update logged in detail (reduced from 3)
+- **First Update**: Only first update logged in detail
 - **Brief Status**: Compact status updates between detailed logs
 - **Smart Fallback**: Logs RestConnect failures and automatic fallback
-
-### Enhanced Byte Analysis
-- **Accessory Detection**: Enhanced debugging of Key 180 byte positions
-- **Water Tank**: Testing multiple byte positions for accurate detection
-- **Change Detection**: Monitors for accessory wear changes between updates
 
 ### RestConnect Connection Monitoring
 ```
@@ -152,46 +248,7 @@ Update #5: 🌐 Battery=100%, Speed=max, Keys=14/14, Total=31, Accessories=5
 ```
 - 🌐 = RestConnect active
 - 📱 = Basic login fallback
-
-## 🛠️ For Developers
-
-### RestConnect Architecture
-The integration uses a layered approach:
-
-1. **RestConnect Client**: Primary data source with multiple REST endpoints
-2. **EufyLogin**: Fallback authentication and basic DPS data
-3. **Smart Coordinator**: Manages connection switching and data processing
-
-### Key Code Changes
-- `coordinator.py`: Now uses RestConnect with automatic fallback
-- `sensor.py`: Added RestConnect status sensor
-- `const.py`: Added RestConnect-specific constants
-- Logging reduced to save disk space
-
-### API Endpoints Used
-```python
-RESTCONNECT_ENDPOINTS = {
-    "device_data": "https://api.eufylife.com/v1/device/info",
-    "accessory_data": "https://api.eufylife.com/v1/device/accessory_info", 
-    "consumable_data": "https://api.eufylife.com/v1/device/consumable_status",
-    "runtime_data": "https://api.eufylife.com/v1/device/runtime_info",
-    "clean_accessory": "https://aiot-clean-api-pr.eufylife.com/app/device/get_accessory_data"
-}
-```
-
-## 📋 Testing the RestConnect Update
-
-### Immediate Testing
-1. **Install the Update**: Upload the new files and restart HA
-2. **Check Sensor Status**: Look for "RestConnect Status" sensor
-3. **Monitor Data Source**: Raw Data sensor shows "RestConnect" or "Basic Login"
-4. **Verify Fallback**: If RestConnect fails, integration should continue with Basic Login
-
-### Accessory Testing Workflow
-1. **Check Current State**: Note accessory percentages in JSON config
-2. **Run Cleaning Cycle**: 5-10 minute room clean
-3. **Monitor for Changes**: Check logs for byte-level changes in Key 180
-4. **Compare Before/After**: Look for 1-2% decreases in accessory wear
+- 🔍 = Investigation Mode active
 
 ## 🐛 Enable Debug Logging
 
@@ -201,13 +258,14 @@ Add this to your Home Assistant `configuration.yaml`:
 logger:
   default: info
   logs:
-    custom_components.Eufy-Robovac-Data-Logger: debug
+    custom_components.eufy_robovac_data_logger: debug
 ```
 
 ## 📋 Key Findings
 
 Based on extensive protocol analysis:
 
+- **Investigation Mode**: Complete Key 180 analysis for accessory wear research
 - **RestConnect Benefits**: Access to additional API endpoints for enhanced data
 - **Smart Fallback**: Automatic recovery if advanced endpoints fail
 - **Key 163**: Perfect battery source (100% accuracy)
@@ -216,16 +274,28 @@ Based on extensive protocol analysis:
 
 ## ⚠️ Important Notes
 
+### Investigation Mode Requirements
+- Requires Investigation Mode enabled during setup
+- Creates detailed JSON files - monitor disk space usage
+- Best used for research and debugging accessory wear patterns
+- Files contain comprehensive data for external analysis
+
 ### RestConnect Requirements
 - Requires stable internet connection for REST API access
 - Falls back to basic login if endpoints are unavailable
 - Some enhanced features may not be available in fallback mode
 
 ### Testing Recommendations
-1. **Monitor RestConnect Status**: Check the new sensor for connection health
-2. **Compare Data Sources**: Note differences between RestConnect and Basic Login
-3. **Test Fallback**: Verify integration continues working if RestConnect fails
-4. **Accessory Tracking**: Run cleaning cycles to test wear detection
+1. **Enable Investigation Mode** for comprehensive accessory analysis
+2. **Monitor RestConnect Status** via the dedicated sensor
+3. **Run Investigation Workflow** before/after cleaning cycles
+4. **Verify Integration Status** through multiple sensor readings
+
+## 📁 File Locations
+
+**Investigation Files**: `/config/eufy_investigation/DEVICE_ID/`
+**Accessory Config**: `/config/custom_components/eufy_robovac_data_logger/accessories/sensors_DEVICEID.json`
+**Debug Logs**: `/config/logs/eufy_robovac_debug_DEVICEID_TIMESTAMP.log`
 
 ## 🤝 Contributing
 
@@ -233,7 +303,8 @@ Based on extensive protocol analysis:
 2. Create a feature branch
 3. Make your changes
 4. Test with both RestConnect and Basic Login modes
-5. Submit a pull request
+5. Test Investigation Mode if adding accessory features
+6. Submit a pull request
 
 ## 📜 License
 
@@ -241,7 +312,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## ⚠️ Disclaimer
 
-This is a debugging integration intended for development purposes. RestConnect provides enhanced data collection but may have different stability characteristics than basic login. Use at your own risk.
+This is a debugging integration intended for development purposes. Investigation Mode creates detailed analysis files and may use additional disk space. RestConnect provides enhanced data collection but may have different stability characteristics than basic login. Use at your own risk.
 
 ## 🆘 Support
 
@@ -250,7 +321,16 @@ This is a debugging integration intended for development purposes. RestConnect p
 
 ## 📝 Changelog
 
-### v2.1.0 - RestConnect Edition
+### v2.2.0 - Investigation Mode Edition
+- ✅ Added Investigation Mode for complete Key 180 analysis
+- ✅ Comprehensive byte-by-byte payload examination
+- ✅ Before/after cleaning cycle comparison
+- ✅ Structured JSON investigation files
+- ✅ Manual investigation services for workflow control
+- ✅ Session-based analysis and summaries
+- ✅ Enhanced accessory wear detection research capabilities
+
+### v2.1.0 - RestConnect Edition  
 - ✅ Added RestConnect support with multiple REST API endpoints
 - ✅ Smart fallback to basic login if RestConnect fails
 - ✅ Reduced logging overhead (detailed logs every 10 minutes)
