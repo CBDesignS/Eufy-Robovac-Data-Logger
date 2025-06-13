@@ -1,4 +1,4 @@
-"""Data update coordinator for Eufy Robovac Data Logger integration with Investigation Mode."""
+"""Data update coordinator for Eufy Robovac Data Logger integration with Smart Investigation Mode."""
 import asyncio
 import logging
 import time
@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EufyX10DebugCoordinator(DataUpdateCoordinator):
-    """Eufy Robovac Debugging data coordinator with RestConnect and Investigation Mode."""
+    """Eufy Robovac Debugging data coordinator with RestConnect and Smart Investigation Mode."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
@@ -31,7 +31,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.openudid = entry.data.get("openudid", f"ha_debug_{self.device_id}")
         self.debug_mode = entry.data.get("debug_mode", True)
         
-        # NEW: Investigation Mode
+        # NEW: Smart Investigation Mode
         self.investigation_mode = entry.data.get("investigation_mode", False)
         
         # Store raw data for debugging
@@ -40,15 +40,15 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.last_update: Optional[float] = None
         self.update_count = 0
         
-        # REDUCED LOGGING - only every 10 minutes (unless investigation mode)
-        self.detailed_log_interval = 600 if not self.investigation_mode else 60  # More frequent in investigation mode
+        # SMART LOGGING - Reduced frequency with intelligence
+        self.detailed_log_interval = 600 if not self.investigation_mode else 300  # Less frequent, smarter
         self.last_detailed_log = 0
         self.first_few_updates = 1  # Only log first update in detail
         
         # CHANGE DETECTION - only log when something changes
         self._last_logged_status = None
         self._quiet_updates_count = 0
-        self._quiet_log_interval = 60
+        self._quiet_log_interval = 120  # Brief status every 2 minutes
         
         # Connection tracking
         self._eufy_login = None
@@ -62,38 +62,39 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.accessory_sensors = {}
         self.previous_accessory_data = {}
         
-        # NEW: Investigation Mode Components
-        self.investigation_logger = None
+        # NEW: Smart Investigation Mode Components
+        self.smart_investigation_logger = None
         self.last_key180_data = None
         self.cleaning_cycle_detected = False
         self.baseline_captured = False
         
-        # Initialize debug logger and investigation logger
+        # Initialize debug logger and smart investigation logger
         self.debug_logger = None
         if self.debug_mode:
             try:
                 from .async_debug_logger import AsyncEufyDebugLogger
                 self.debug_logger = AsyncEufyDebugLogger(self.device_id, hass.config.config_dir)
-                _LOGGER.info("🚀 DEBUG MODE: Coordinator initialized with RestConnect + accessory config for device: %s", self.device_id)
+                _LOGGER.info("🚀 DEBUG MODE: Coordinator initialized with RestConnect + smart investigation for device: %s", self.device_id)
             except Exception as e:
                 _LOGGER.error("Failed to initialize async debug logger: %s", e)
         
-        # Initialize investigation logger if investigation mode enabled
+        # Initialize SMART investigation logger if investigation mode enabled
         if self.investigation_mode:
             try:
-                from .investigation_logger import Key180InvestigationLogger
-                self.investigation_logger = Key180InvestigationLogger(self.device_id, hass.config.config_dir)
-                _LOGGER.info("🔍 INVESTIGATION MODE ENABLED: Key 180 comprehensive logging activated for device: %s", self.device_id)
-                _LOGGER.info("📂 Investigation files will be saved to: %s", self.investigation_logger.get_investigation_directory())
+                from .smart_investigation_logger import SmartKey180InvestigationLogger
+                self.smart_investigation_logger = SmartKey180InvestigationLogger(self.device_id, hass.config.config_dir)
+                _LOGGER.info("🔍 SMART INVESTIGATION MODE ENABLED: Intelligent Key 180 logging activated for device: %s", self.device_id)
+                _LOGGER.info("📂 Investigation files: %s", self.smart_investigation_logger.get_investigation_directory())
+                _LOGGER.info("🧠 Smart features: Change detection, duplicate prevention, auto-cleanup")
             except Exception as e:
-                _LOGGER.error("❌ Failed to initialize investigation logger: %s", e)
+                _LOGGER.error("❌ Failed to initialize smart investigation logger: %s", e)
                 self.investigation_mode = False  # Disable if can't initialize
         
         mode_description = []
         if self.debug_mode:
             mode_description.append("🐛 Debug")
         if self.investigation_mode:
-            mode_description.append("🔍 Investigation")
+            mode_description.append("🔍 Smart Investigation")
         
         _LOGGER.info("🚀 Coordinator initialized for device: %s [%s]", self.device_id, " + ".join(mode_description) if mode_description else "Standard")
         
@@ -105,7 +106,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         )
 
     async def async_config_entry_first_refresh(self) -> None:
-        """Handle first refresh with accessory config and investigation setup."""
+        """Handle first refresh with accessory config and smart investigation setup."""
         try:
             # Initialize accessory configuration
             await self._initialize_accessory_config()
@@ -113,9 +114,9 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             # Initialize RestConnect (will fallback to basic login if REST not available)
             await self._initialize_rest_client()
             
-            # Investigation mode first refresh
+            # Smart investigation mode first refresh
             if self.investigation_mode:
-                await self._initialize_investigation_mode()
+                await self._initialize_smart_investigation_mode()
             
             # Call parent first refresh
             await super().async_config_entry_first_refresh()
@@ -124,20 +125,21 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             _LOGGER.error("❌ Failed during first refresh: %s", e)
             raise
 
-    async def _initialize_investigation_mode(self) -> None:
-        """Initialize investigation mode logging and setup."""
-        if not self.investigation_logger:
+    async def _initialize_smart_investigation_mode(self) -> None:
+        """Initialize smart investigation mode logging and setup."""
+        if not self.smart_investigation_logger:
             return
             
         try:
-            self._debug_log("🔍 Initializing Investigation Mode for Key 180 analysis", "info", force=True)
-            self._debug_log(f"📂 Investigation directory: {self.investigation_logger.get_investigation_directory()}", "info", force=True)
-            self._debug_log(f"🔬 Session ID: {self.investigation_logger.get_session_id()}", "info", force=True)
-            self._debug_log("🎯 TARGET: Key 180 comprehensive byte-by-byte analysis", "info", force=True)
-            self._debug_log("📊 GOAL: Detect accessory wear changes between cleaning cycles", "info", force=True)
+            self._debug_log("🔍 Initializing Smart Investigation Mode for intelligent Key 180 analysis", "info", force=True)
+            self._debug_log(f"📂 Investigation directory: {self.smart_investigation_logger.get_investigation_directory()}", "info", force=True)
+            self._debug_log(f"🔬 Session ID: {self.smart_investigation_logger.get_session_id()}", "info", force=True)
+            self._debug_log("🧠 SMART FEATURES: Change detection, duplicate prevention, auto-cleanup", "info", force=True)
+            self._debug_log("🎯 TARGET: Key 180 intelligent analysis - only logs meaningful changes", "info", force=True)
+            self._debug_log("📊 EFFICIENCY: Eliminates duplicate monitoring files", "info", force=True)
             
         except Exception as e:
-            self._debug_log(f"❌ Failed to initialize investigation mode: {e}", "error", force=True)
+            self._debug_log(f"❌ Failed to initialize smart investigation mode: {e}", "error", force=True)
 
     async def _initialize_accessory_config(self) -> None:
         """Initialize the accessory configuration system."""
@@ -231,12 +233,12 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         """Determine if we should do detailed logging this update."""
         current_time = time.time()
         
-        # In investigation mode, log more frequently
+        # In investigation mode, log more frequently but smarter
         if self.investigation_mode:
-            # Log every update for first 10 updates, then every minute
-            if self.update_count <= 10:
+            # Log every update for first 5 updates, then every 5 minutes
+            if self.update_count <= 5:
                 return True
-            elif current_time - self.last_detailed_log >= 60:  # Every minute in investigation mode
+            elif current_time - self.last_detailed_log >= 300:  # Every 5 minutes in investigation mode
                 self.last_detailed_log = current_time
                 return True
         else:
@@ -251,8 +253,8 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
 
     def _debug_log(self, message: str, level: str = "debug", force: bool = False):
         """Log to separate file if available, otherwise to main log."""
-        # Log if forced, or if in detailed logging mode, or if investigation mode
-        should_log = force or self._should_do_detailed_logging() or self.investigation_mode
+        # Log if forced, or if in detailed logging mode, or if investigation mode and important
+        should_log = force or self._should_do_detailed_logging() or (self.investigation_mode and level in ["info", "warning", "error"])
         
         if not should_log:
             return
@@ -277,7 +279,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("[DEBUG] %s", message)
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        """Fetch data from Eufy API with Investigation Mode support."""
+        """Fetch data from Eufy API with Smart Investigation Mode support."""
         try:
             self.update_count += 1
             do_detailed = self._should_do_detailed_logging()
@@ -285,7 +287,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             if do_detailed:
                 mode_indicators = []
                 if self.investigation_mode:
-                    mode_indicators.append("🔍 INVESTIGATION")
+                    mode_indicators.append("🔍 SMART INVESTIGATION")
                 if self.debug_mode:
                     mode_indicators.append("🐛 DEBUG")
                 
@@ -294,15 +296,15 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 self._debug_log("=" * 60, "info")
                 self._debug_log(f"=== EUFY ROBOVAC UPDATE #{self.update_count} ({mode_str}) ===", "info")
                 if self.investigation_mode:
-                    self._debug_log("=== 🎯 Key 180 Investigation Mode Active ===", "info")
+                    self._debug_log("=== 🧠 Smart Key 180 Investigation Mode Active ===", "info")
                 self._debug_log("=" * 60, "info")
             
             # Fetch data using RestConnect (preferred) or fallback to basic login
             await self._fetch_eufy_data_with_rest()
             
-            # INVESTIGATION MODE: Process Key 180 data immediately
+            # SMART INVESTIGATION MODE: Process Key 180 data intelligently
             if self.investigation_mode and "180" in self.raw_data:
-                await self._process_investigation_data()
+                await self._process_smart_investigation_data()
             
             # Process the sensor data
             await self._process_sensor_data()
@@ -318,8 +320,9 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             
             if do_detailed:
                 investigation_status = ""
-                if self.investigation_mode:
-                    investigation_status = f" [🔍 Key180: {'✅' if '180' in self.raw_data else '❌'}]"
+                if self.investigation_mode and self.smart_investigation_logger:
+                    smart_status = self.smart_investigation_logger.get_smart_status()
+                    investigation_status = f" [🧠 Smart: {smart_status['meaningful_logs']}/{smart_status['total_updates']} files, {smart_status['efficiency_percentage']:.1f}% efficient]"
                 
                 self._debug_log(f"✅ Update #{self.update_count} completed successfully{investigation_status}", "info")
             else:
@@ -340,7 +343,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}")
 
     async def _fetch_eufy_data_with_rest(self) -> None:
-        """FIXED: Fetch data from Eufy API using RestConnect (preferred) or basic login fallback."""
+        """Fetch data from Eufy API using RestConnect (preferred) or basic login fallback."""
         try:
             data_source = "Unknown"
             
@@ -349,9 +352,13 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 try:
                     self._debug_log("🌐 Attempting RestConnect data fetch...", "debug")
                     
-                    # FIXED: Use correct RestConnect methods
-                    await self._rest_client.updateDevice()  # This updates the device data
-                    rest_data = self._rest_client.get_raw_data()  # This gets the raw data
+                    # Set detailed logging flag for RestConnect
+                    if hasattr(self._rest_client, '_detailed_logging_enabled'):
+                        self._rest_client._detailed_logging_enabled = self._should_do_detailed_logging()
+                    
+                    # Use correct RestConnect methods
+                    await self._rest_client.updateDevice()
+                    rest_data = self._rest_client.get_raw_data()
                     
                     if rest_data:
                         self.raw_data = rest_data
@@ -372,11 +379,11 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 if not self._eufy_login:
                     raise Exception("No authentication method available")
                 
-                # FIXED: Use correct EufyLogin method
-                device_data = await self._eufy_login.getMqttDevice(self.device_id)  # This gets device data
+                # Use correct EufyLogin method
+                device_data = await self._eufy_login.getMqttDevice(self.device_id)
                 
                 if device_data and 'dps' in device_data:
-                    self.raw_data = device_data['dps']  # Extract DPS data
+                    self.raw_data = device_data['dps']
                     data_source = "📱 Basic Login"
                     self._debug_log(f"✅ Basic login fetch successful: {len(self.raw_data)} keys", "debug")
                 else:
@@ -443,6 +450,13 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     
                     self.parsed_data["work_status"] = work_status
                     self._debug_log(f"🔧 Work Status: {work_status} (Key 153)", "debug")
+                    
+                    # Store for smart investigation cleaning detection
+                    if hasattr(self, '_last_work_status'):
+                        if self._last_work_status != work_status:
+                            self._debug_log(f"🔄 Work status changed: {self._last_work_status} → {work_status}", "info")
+                    self._last_work_status = work_status
+                    
                 except Exception as e:
                     self._debug_log(f"⚠️ Work status processing error: {e}", "warning")
             
@@ -559,13 +573,40 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             self._debug_log(f"❌ Accessory data processing error: {e}", "error", force=True)
             self.parsed_data["accessory_sensors"] = {}
 
+    async def _process_smart_investigation_data(self) -> None:
+        """Process Key 180 data using smart investigation logger."""
+        if not self.smart_investigation_logger or "180" not in self.raw_data:
+            return
+            
+        try:
+            # Use smart logger to process the update
+            result_file = await self.smart_investigation_logger.process_key180_update(self.raw_data)
+            
+            if result_file:
+                filename = Path(result_file).name
+                self._debug_log(f"🧠 Smart Investigation: Meaningful change logged to {filename}", "info")
+                
+                # Get smart status for logging
+                smart_status = self.smart_investigation_logger.get_smart_status()
+                efficiency = smart_status.get('efficiency_percentage', 0)
+                self._debug_log(f"📊 Smart Stats: {smart_status['meaningful_logs']}/{smart_status['total_updates']} files ({efficiency:.1f}% efficient)", "debug")
+            else:
+                # No file created - either no change or duplicate
+                smart_status = self.smart_investigation_logger.get_smart_status()
+                if smart_status['total_updates'] % 10 == 0:  # Log efficiency every 10 updates
+                    efficiency = smart_status.get('efficiency_percentage', 0)
+                    self._debug_log(f"🧠 Smart Investigation: No change detected (Efficiency: {efficiency:.1f}%)", "debug")
+            
+        except Exception as e:
+            self._debug_log(f"❌ Smart investigation processing error: {e}", "error", force=True)
+
     def _log_brief_status(self) -> None:
         """Log a brief status update between detailed logs."""
         try:
             current_time = time.time()
             
-            # Only log brief status every minute to avoid spam
-            if current_time - self._last_logged_status < self._quiet_log_interval:
+            # Only log brief status every 2 minutes to avoid spam
+            if self._last_logged_status and current_time - self._last_logged_status < self._quiet_log_interval:
                 self._quiet_updates_count += 1
                 return
             
@@ -579,7 +620,15 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             
             # Data source emoji
             source_emoji = "🌐" if "RestConnect" in data_source else "📱"
-            investigation_emoji = " 🔍" if self.investigation_mode and "180" in self.raw_data else ""
+            
+            # Smart investigation status
+            investigation_emoji = ""
+            if self.investigation_mode and self.smart_investigation_logger:
+                smart_status = self.smart_investigation_logger.get_smart_status()
+                efficiency = smart_status.get('efficiency_percentage', 0)
+                investigation_emoji = f" 🧠{efficiency:.0f}%"
+            elif self.investigation_mode and "180" in self.raw_data:
+                investigation_emoji = " 🔍"
             
             brief_msg = f"Update #{self.update_count}: {source_emoji} Battery={battery}%, Speed={speed}, Keys={found_keys}/{len(ALL_MONITORED_KEYS)}, Total={total_keys}, Accessories={accessories}{investigation_emoji}"
             
@@ -594,64 +643,6 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             
         except Exception as e:
             self._debug_log(f"⚠️ Brief status error: {e}", "warning")
-
-    async def _process_investigation_data(self) -> None:
-        """Process Key 180 data for investigation mode."""
-        if not self.investigation_logger or "180" not in self.raw_data:
-            return
-            
-        try:
-            key180_data = self.raw_data["180"]
-            
-            # Log the Key 180 data with comprehensive analysis
-            log_phase = "monitoring"
-            
-            # Auto-detect cleaning phases (basic detection based on other keys)
-            if not self.baseline_captured:
-                log_phase = "baseline"
-            elif self._detect_cleaning_cycle_end():
-                log_phase = "post_cleaning"
-            
-            # Log the data
-            result_file = await self.investigation_logger.log_key180_data(
-                self.raw_data, log_phase
-            )
-            
-            if result_file:
-                self._debug_log(f"🔍 Investigation: Key 180 {log_phase} data logged to {Path(result_file).name}", "info")
-            
-            # Update tracking
-            if log_phase == "baseline":
-                self.baseline_captured = True
-                self._debug_log("🎯 Investigation: Baseline captured successfully", "info")
-            elif log_phase == "post_cleaning":
-                self._debug_log("🎯 Investigation: Post-cleaning data captured", "info")
-            
-            # Track changes
-            if self.last_key180_data and self.last_key180_data != key180_data:
-                self._debug_log("🔄 Investigation: Key 180 data changed since last update", "info")
-            
-            self.last_key180_data = key180_data
-            
-        except Exception as e:
-            self._debug_log(f"❌ Investigation processing error: {e}", "error", force=True)
-
-    def _detect_cleaning_cycle_end(self) -> bool:
-        """Simple detection of cleaning cycle end based on work status."""
-        try:
-            # Check if work status indicates end of cleaning
-            work_status_raw = self.raw_data.get("153")
-            if work_status_raw:
-                # If we can decode work status and it's "go_home" or "charging"
-                # after a previous cleaning state, consider it end of cycle
-                # This is a basic implementation - could be enhanced
-                pass
-            
-            # For now, return False - user will manually trigger phases
-            return False
-            
-        except Exception:
-            return False
 
     def get_rest_connection_info(self) -> Dict[str, Any]:
         """Get RestConnect connection information for status sensor."""
@@ -692,18 +683,19 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             }
 
     async def capture_investigation_baseline(self) -> str:
-        """Manually capture baseline for investigation."""
-        if not self.investigation_logger:
-            return "Investigation mode not enabled"
+        """Manually capture baseline for smart investigation."""
+        if not self.smart_investigation_logger:
+            return "Smart Investigation mode not enabled"
             
         try:
             if "180" not in self.raw_data:
                 return "No Key 180 data available"
             
-            result_file = await self.investigation_logger.capture_baseline(self.raw_data)
+            result_file = await self.smart_investigation_logger.capture_baseline(self.raw_data)
             if result_file:
-                self.baseline_captured = True
-                return f"Baseline captured: {Path(result_file).name}"
+                filename = Path(result_file).name
+                self._debug_log(f"🎯 Manual baseline captured: {filename}", "info", force=True)
+                return f"Smart baseline captured: {filename}"
             else:
                 return "Failed to capture baseline"
                 
@@ -711,17 +703,19 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             return f"Error capturing baseline: {e}"
 
     async def capture_investigation_post_cleaning(self) -> str:
-        """Manually capture post-cleaning data for investigation."""
-        if not self.investigation_logger:
-            return "Investigation mode not enabled"
+        """Manually capture post-cleaning data for smart investigation."""
+        if not self.smart_investigation_logger:
+            return "Smart Investigation mode not enabled"
             
         try:
             if "180" not in self.raw_data:
                 return "No Key 180 data available"
             
-            result_file = await self.investigation_logger.capture_post_cleaning(self.raw_data)
+            result_file = await self.smart_investigation_logger.capture_post_cleaning(self.raw_data)
             if result_file:
-                return f"Post-cleaning captured: {Path(result_file).name}"
+                filename = Path(result_file).name
+                self._debug_log(f"📊 Manual post-cleaning captured: {filename}", "info", force=True)
+                return f"Smart post-cleaning captured: {filename}"
             else:
                 return "Failed to capture post-cleaning data"
                 
@@ -729,43 +723,81 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             return f"Error capturing post-cleaning: {e}"
 
     async def get_investigation_summary(self) -> str:
-        """Get investigation session summary."""
-        if not self.investigation_logger:
-            return "Investigation mode not enabled"
+        """Get smart investigation session summary."""
+        if not self.smart_investigation_logger:
+            return "Smart Investigation mode not enabled"
             
         try:
-            summary_file = await self.investigation_logger.generate_session_summary()
-            return f"Session summary: {Path(summary_file).name}" if summary_file else "Failed to generate summary"
-            
+            summary_file = await self.smart_investigation_logger.generate_session_summary()
+            if summary_file:
+                filename = Path(summary_file).name
+                smart_status = self.smart_investigation_logger.get_smart_status()
+                efficiency = smart_status.get('efficiency_percentage', 0)
+                self._debug_log(f"📋 Smart session summary created: {filename} (Efficiency: {efficiency:.1f}%)", "info", force=True)
+                return f"Smart session summary: {filename}"
+            else:
+                return "Failed to generate summary"
+                
         except Exception as e:
             return f"Error generating summary: {e}"
 
     def get_investigation_status(self) -> Dict[str, Any]:
-        """Get current investigation status."""
+        """Get current smart investigation status."""
         if not self.investigation_mode:
-            return {"enabled": False, "status": "Investigation mode disabled"}
+            return {"enabled": False, "status": "Smart Investigation mode disabled"}
+        
+        if not self.smart_investigation_logger:
+            return {"enabled": True, "status": "Smart Investigation logger not initialized", "error": True}
             
-        return {
-            "enabled": True,
-            "baseline_captured": self.baseline_captured,
-            "session_id": self.investigation_logger.get_session_id() if self.investigation_logger else None,
-            "investigation_directory": self.investigation_logger.get_investigation_directory() if self.investigation_logger else None,
-            "key180_available": "180" in self.raw_data,
-            "update_count": self.update_count,
-            "last_key180_data_length": len(self.last_key180_data) if self.last_key180_data else 0
-        }
+        try:
+            smart_status = self.smart_investigation_logger.get_smart_status()
+            
+            return {
+                "enabled": True,
+                "mode": smart_status.get('mode', 'unknown'),
+                "baseline_captured": smart_status.get('baseline_captured', False),
+                "session_id": smart_status.get('session_id'),
+                "investigation_directory": smart_status.get('investigation_directory'),
+                "key180_available": "180" in self.raw_data,
+                "update_count": self.update_count,
+                "total_updates_received": smart_status.get('total_updates', 0),
+                "meaningful_logs_created": smart_status.get('meaningful_logs', 0),
+                "duplicates_skipped": smart_status.get('duplicates_skipped', 0),
+                "efficiency_percentage": smart_status.get('efficiency_percentage', 0),
+                "last_log_time": smart_status.get('last_log_time'),
+                "smart_features": [
+                    "🧠 Intelligent change detection",
+                    "🗑️ Automatic duplicate prevention", 
+                    "🧹 Auto-cleanup of old monitoring files",
+                    "📊 Efficiency tracking and reporting",
+                    "🎯 Focus on meaningful accessory changes"
+                ]
+            }
+            
+        except Exception as e:
+            return {
+                "enabled": True,
+                "status": f"Error getting smart status: {e}",
+                "error": True
+            }
 
     async def async_shutdown(self):
-        """Shutdown the coordinator with investigation cleanup."""
+        """Shutdown the coordinator with smart investigation cleanup."""
         self._debug_log("🛑 Coordinator shutdown", "info", force=True)
         
-        # Investigation mode cleanup
-        if self.investigation_mode and self.investigation_logger:
+        # Smart investigation mode cleanup
+        if self.investigation_mode and self.smart_investigation_logger:
             try:
-                summary_file = await self.investigation_logger.generate_session_summary()
-                self._debug_log(f"🔍 Investigation session summary saved: {Path(summary_file).name if summary_file else 'Failed'}", "info", force=True)
+                summary_file = await self.smart_investigation_logger.generate_session_summary()
+                if summary_file:
+                    filename = Path(summary_file).name
+                    smart_status = self.smart_investigation_logger.get_smart_status()
+                    efficiency = smart_status.get('efficiency_percentage', 0)
+                    self._debug_log(f"🧠 Smart Investigation session summary saved: {filename} (Efficiency: {efficiency:.1f}%)", "info", force=True)
+                else:
+                    self._debug_log("❌ Failed to create smart investigation summary", "error", force=True)
             except Exception as e:
-                self._debug_log(f"❌ Error creating investigation summary: {e}", "error", force=True)
+                self._debug_log(f"❌ Error creating smart investigation summary: {e}", "error", force=True)
         
         # Shutdown RestConnect client
         if self._rest_client:
@@ -792,4 +824,4 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 self._debug_log(f"❌ Error stopping debug logger: {e}", "error", force=True)
         
-        self._debug_log("🛑 Coordinator shutdown completed", "info", force=True)
+        self._debug_log("🛑 Smart Investigation Coordinator shutdown completed", "info", force=True)
