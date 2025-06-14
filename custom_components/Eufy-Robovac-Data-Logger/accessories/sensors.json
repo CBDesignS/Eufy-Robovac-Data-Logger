@@ -125,7 +125,7 @@
       "description": "Water tank level sensor - monitors remaining cleaning water",
       "key": "167",
       "byte_position": null,
-      "current_life_remaining": 76,
+      "current_life_remaining": 65,
       "hours_remaining": 0,
       "max_life_hours": 0,
       "replacement_threshold": 10,
