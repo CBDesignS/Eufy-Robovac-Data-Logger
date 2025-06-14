@@ -81,6 +81,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         # Initialize ENHANCED investigation logger v3.0 if investigation mode enabled
         if self.investigation_mode:
             try:
+                # FIXED: Correct import for the enhanced smart investigation logger
                 from .enhanced_smart_investigation_logger import EnhancedSmartKey180InvestigationLogger
                 self.smart_investigation_logger = EnhancedSmartKey180InvestigationLogger(
                     self.device_id, 
@@ -509,7 +510,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                             try:
                                 # Decode base64 and extract byte
                                 binary_data = base64.b64decode(raw_value)
-                                if byte_position < len(binary_data):
+                                if isinstance(byte_position, int) and byte_position < len(binary_data):
                                     byte_value = binary_data[byte_position]
                                     
                                     # Only consider as percentage if in valid range

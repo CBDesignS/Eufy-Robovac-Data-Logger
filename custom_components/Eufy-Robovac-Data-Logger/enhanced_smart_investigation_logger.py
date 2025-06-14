@@ -3,6 +3,7 @@ Enhanced Smart Investigation Logger for Key 180 Accessory Wear Detection
 VERSION 3.0: Now includes sensors.json reference data for self-contained analysis.
 Optimized with intelligent change detection and reduced file bloat.
 Only logs when meaningful changes are detected.
+FIXED: Complete file without syntax errors.
 """
 
 import asyncio
@@ -590,6 +591,9 @@ class EnhancedSmartKey180InvestigationLogger:
         try:
             binary_data = base64.b64decode(key180_raw)
             
+            # Get known positions from config
+            known_positions = self._extract_known_positions_from_config(sensors_config)
+            
             analysis = {
                 "total_bytes": len(binary_data),
                 "hex_dump": binary_data.hex(),
@@ -630,7 +634,97 @@ class EnhancedSmartKey180InvestigationLogger:
             return analysis
             
         except Exception as e:
-            return {"error": f"Detailed byte analysis failed: {e}"}
+            return {"error": f"Enhanced accessory analysis failed: {e}"}
+    
+    async def _create_detailed_byte_analysis(self, key180_raw: str, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Create detailed byte analysis enhanced with sensors config data."""
+        try:
+            binary_data = base64.b64decode(key180_raw)
+            
+            # Get known positions from config
+            known_positions = self._extract_known_positions_from_config(sensors_config)
+            
+            analysis = {
+                "total_bytes": len(binary_data),
+                "percentage_candidates": [],
+                "config_position_analysis": {},
+                "android_app_comparison": {},
+                "position_15_focus": {}
+            }
+            
+            # Find all percentage candidates (1-100 range)
+            for i, byte_val in enumerate(binary_data):
+                if 1 <= byte_val <= 100:
+                    analysis["percentage_candidates"].append({
+                        "position": i,
+                        "value": byte_val,
+                        "hex": f"0x{byte_val:02x}"
+                    })
+            
+            # Analyze known positions from config
+            template_sensors = sensors_config.get("template_config", {}).get("accessory_sensors", {})
+            for sensor_id, sensor_data in template_sensors.items():
+                pos = sensor_data.get("byte_position")
+                expected_pct = sensor_data.get("current_life_remaining")
+                
+                if isinstance(pos, int) and pos < len(binary_data):
+                    detected_val = binary_data[pos]
+                    
+                    analysis["config_position_analysis"][sensor_id] = {
+                        "position": pos,
+                        "expected_percentage": expected_pct,
+                        "detected_value": detected_val,
+                        "match": detected_val == expected_pct if expected_pct else False,
+                        "difference": abs(detected_val - expected_pct) if expected_pct else None,
+                        "accessory_name": sensor_data.get("name"),
+                        "enabled": sensor_data.get("enabled", False)
+                    }
+            
+            # Android app comparison for all percentage candidates
+            for candidate in analysis["percentage_candidates"]:
+                pos = candidate["position"]
+                val = candidate["value"]
+                
+                # Find matching Android app percentages
+                matches = []
+                for sensor_id, sensor_data in template_sensors.items():
+                    expected = sensor_data.get("current_life_remaining")
+                    if expected and abs(val - expected) <= 2:  # Within 2% tolerance
+                        matches.append({
+                            "sensor_id": sensor_id,
+                            "accessory_name": sensor_data.get("name"),
+                            "expected_percentage": expected,
+                            "difference": abs(val - expected),
+                            "exact_match": val == expected
+                        })
+                
+                if matches:
+                    analysis["android_app_comparison"][str(pos)] = {
+                        "position": pos,
+                        "detected_value": val,
+                        "matches": matches,
+                        "best_match": min(matches, key=lambda x: x["difference"])
+                    }
+            
+            # Special focus on Position 15 (suspected Brush Guard)
+            if 15 < len(binary_data):
+                pos_15_value = binary_data[15]
+                analysis["position_15_focus"] = {
+                    "position": 15,
+                    "detected_value": pos_15_value,
+                    "suspected_accessory": "Brush Guard",
+                    "expected_percentage": 97,  # From Android app
+                    "exact_match": pos_15_value == 97,
+                    "difference": abs(pos_15_value - 97),
+                    "confidence": "very_high" if pos_15_value == 97 else "medium",
+                    "testing_recommendation": "Run cleaning cycle and verify this position decreases by 1-3%",
+                    "confirmation_status": "pending_cleaning_test"
+                }
+            
+            return analysis
+            
+        except Exception as e:
+            return {"error": f"Enhanced detailed byte analysis failed: {e}"}
     
     def _extract_efficient_context(self, full_raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract only essential context data to keep files smaller."""
@@ -802,94 +896,4 @@ class EnhancedSmartKey180InvestigationLogger:
     
     def get_session_id(self) -> str:
         """Get current session ID."""
-        return self.session_id_bytes": len(binary_data),
-                "percentage_candidates": [],
-                "config_position_analysis": {},
-                "android_app_comparison": {},
-                "position_15_focus": {}
-            }
-            
-            # Find all percentage candidates (1-100 range)
-            for i, byte_val in enumerate(binary_data):
-                if 1 <= byte_val <= 100:
-                    analysis["percentage_candidates"].append({
-                        "position": i,
-                        "value": byte_val,
-                        "hex": f"0x{byte_val:02x}"
-                    })
-            
-            # Analyze known positions from config
-            template_sensors = sensors_config.get("template_config", {}).get("accessory_sensors", {})
-            for sensor_id, sensor_data in template_sensors.items():
-                pos = sensor_data.get("byte_position")
-                expected_pct = sensor_data.get("current_life_remaining")
-                
-                if isinstance(pos, int) and pos < len(binary_data):
-                    detected_val = binary_data[pos]
-                    
-                    analysis["config_position_analysis"][sensor_id] = {
-                        "position": pos,
-                        "expected_percentage": expected_pct,
-                        "detected_value": detected_val,
-                        "match": detected_val == expected_pct if expected_pct else False,
-                        "difference": abs(detected_val - expected_pct) if expected_pct else None,
-                        "accessory_name": sensor_data.get("name"),
-                        "enabled": sensor_data.get("enabled", False)
-                    }
-            
-            # Android app comparison for all percentage candidates
-            for candidate in analysis["percentage_candidates"]:
-                pos = candidate["position"]
-                val = candidate["value"]
-                
-                # Find matching Android app percentages
-                matches = []
-                for sensor_id, sensor_data in template_sensors.items():
-                    expected = sensor_data.get("current_life_remaining")
-                    if expected and abs(val - expected) <= 2:  # Within 2% tolerance
-                        matches.append({
-                            "sensor_id": sensor_id,
-                            "accessory_name": sensor_data.get("name"),
-                            "expected_percentage": expected,
-                            "difference": abs(val - expected),
-                            "exact_match": val == expected
-                        })
-                
-                if matches:
-                    analysis["android_app_comparison"][str(pos)] = {
-                        "position": pos,
-                        "detected_value": val,
-                        "matches": matches,
-                        "best_match": min(matches, key=lambda x: x["difference"])
-                    }
-            
-            # Special focus on Position 15 (suspected Brush Guard)
-            if 15 < len(binary_data):
-                pos_15_value = binary_data[15]
-                analysis["position_15_focus"] = {
-                    "position": 15,
-                    "detected_value": pos_15_value,
-                    "suspected_accessory": "Brush Guard",
-                    "expected_percentage": 97,  # From Android app
-                    "exact_match": pos_15_value == 97,
-                    "difference": abs(pos_15_value - 97),
-                    "confidence": "very_high" if pos_15_value == 97 else "medium",
-                    "testing_recommendation": "Run cleaning cycle and verify this position decreases by 1-3%",
-                    "confirmation_status": "pending_cleaning_test"
-                }
-            
-            return analysis
-            
-        except Exception as e:
-            return {"error": f"Enhanced accessory analysis failed: {e}"}
-    
-    async def _create_detailed_byte_analysis(self, key180_raw: str, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Create detailed byte analysis enhanced with sensors config data."""
-        try:
-            binary_data = base64.b64decode(key180_raw)
-            
-            # Get known positions from config
-            known_positions = self._extract_known_positions_from_config(sensors_config)
-            
-            analysis = {
-                "total
+        return self.session_id
