@@ -1,6 +1,7 @@
 """
-Smart Investigation Logger for Key 180 Accessory Wear Detection
-Optimized version with intelligent change detection and reduced file bloat.
+Enhanced Smart Investigation Logger for Key 180 Accessory Wear Detection
+VERSION 3.0: Now includes sensors.json reference data for self-contained analysis.
+Optimized with intelligent change detection and reduced file bloat.
 Only logs when meaningful changes are detected.
 """
 
@@ -27,18 +28,30 @@ class LoggingMode(str, Enum):
     MANUAL_TRIGGER = "manual_trigger"
 
 
-class SmartKey180InvestigationLogger:
+class EnhancedSmartKey180InvestigationLogger:
     """
-    Smart Investigation Logger with intelligent change detection.
+    Enhanced Smart Investigation Logger with sensors.json integration.
+    Creates self-contained analysis files with complete reference data.
     Reduces file bloat by only logging meaningful changes.
     """
     
-    def __init__(self, device_id: str, hass_config_dir: str):
+    def __init__(self, device_id: str, hass_config_dir: str, integration_dir: Optional[str] = None):
         self.device_id = device_id
+        self.hass_config_dir = hass_config_dir
         
         # Create investigation directory
         self.investigation_dir = Path(hass_config_dir) / "eufy_investigation" / device_id
         self.investigation_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Integration directory for accessing sensors.json
+        if integration_dir:
+            self.integration_dir = Path(integration_dir)
+            self.sensors_config_file = self.integration_dir / "accessories" / "sensors.json"
+            self.device_config_file = self.integration_dir / "accessories" / f"sensors_{device_id}.json"
+        else:
+            self.integration_dir = None
+            self.sensors_config_file = None
+            self.device_config_file = None
         
         # Session tracking
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -64,13 +77,76 @@ class SmartKey180InvestigationLogger:
         self.meaningful_logs_created = 0
         self.duplicates_skipped = 0
         
-        _LOGGER.info("🔍 Smart Investigation Logger initialized with change detection")
+        # NEW: Sensors config cache
+        self._sensors_config_cache = None
+        self._device_config_cache = None
+        self._config_load_time = None
+        
+        _LOGGER.info("🔍 Enhanced Smart Investigation Logger v3.0 initialized with sensors config integration")
         _LOGGER.info("📂 Investigation directory: %s", self.investigation_dir)
+        _LOGGER.info("🔧 Sensors config: %s", self.sensors_config_file if self.sensors_config_file else "Not available")
         _LOGGER.info("🧠 Mode: %s", self.current_mode.value)
+        _LOGGER.info("✨ NEW: Self-contained analysis files with complete reference data")
+    
+    async def _load_sensors_config(self) -> Dict[str, Any]:
+        """Load sensors.json configuration for reference data."""
+        try:
+            current_time = datetime.now().timestamp()
+            
+            # Use cache if recent (5 minute cache)
+            if (self._sensors_config_cache and self._config_load_time and 
+                current_time - self._config_load_time < 300):
+                return self._sensors_config_cache
+            
+            sensors_config = {}
+            device_config = {}
+            
+            # Load template sensors.json
+            if self.sensors_config_file and self.sensors_config_file.exists():
+                try:
+                    async with aiofiles.open(self.sensors_config_file, 'r', encoding='utf-8') as f:
+                        content = await f.read()
+                        sensors_config = json.loads(content)
+                    _LOGGER.debug("✅ Loaded sensors.json template config")
+                except Exception as e:
+                    _LOGGER.warning("⚠️ Failed to load sensors.json template: %s", e)
+            
+            # Load device-specific sensors_DEVICEID.json
+            if self.device_config_file and self.device_config_file.exists():
+                try:
+                    async with aiofiles.open(self.device_config_file, 'r', encoding='utf-8') as f:
+                        content = await f.read()
+                        device_config = json.loads(content)
+                    _LOGGER.debug("✅ Loaded device-specific sensor config")
+                except Exception as e:
+                    _LOGGER.warning("⚠️ Failed to load device sensor config: %s", e)
+            
+            # Cache the loaded configs
+            self._sensors_config_cache = {
+                "template_config": sensors_config,
+                "device_config": device_config,
+                "load_timestamp": datetime.now().isoformat(),
+                "template_available": bool(sensors_config),
+                "device_config_available": bool(device_config)
+            }
+            self._config_load_time = current_time
+            
+            return self._sensors_config_cache
+            
+        except Exception as e:
+            _LOGGER.error("❌ Error loading sensors configuration: %s", e)
+            return {
+                "template_config": {},
+                "device_config": {},
+                "load_timestamp": datetime.now().isoformat(),
+                "template_available": False,
+                "device_config_available": False,
+                "error": str(e)
+            }
     
     async def process_key180_update(self, raw_data: Dict[str, Any]) -> Optional[str]:
         """
-        Smart processing of Key 180 data with intelligent change detection.
+        Enhanced smart processing of Key 180 data with sensors config integration.
         
         Args:
             raw_data: Complete raw API data
@@ -99,9 +175,12 @@ class SmartKey180InvestigationLogger:
             # Determine appropriate logging mode and filename
             log_mode, filename = await self._determine_log_mode_and_filename(log_reason)
             
-            # Create comprehensive analysis
-            analysis_data = await self._create_smart_analysis(
-                key180_raw, raw_data, log_mode, log_reason
+            # NEW: Load sensors config for enhanced analysis
+            sensors_config = await self._load_sensors_config()
+            
+            # Create comprehensive analysis with sensors reference data
+            analysis_data = await self._create_enhanced_analysis(
+                key180_raw, raw_data, log_mode, log_reason, sensors_config
             )
             
             # Write to file
@@ -118,14 +197,14 @@ class SmartKey180InvestigationLogger:
             
             self.meaningful_logs_created += 1
             
-            _LOGGER.info("📊 Smart log created: %s (Reason: %s)", filename, log_reason)
+            _LOGGER.info("📊 Enhanced log created: %s (Reason: %s)", filename, log_reason)
             _LOGGER.debug("📈 Stats: %d updates, %d logged, %d skipped", 
                          self.total_updates_received, self.meaningful_logs_created, self.duplicates_skipped)
             
             return str(filepath)
             
         except Exception as e:
-            _LOGGER.error("❌ Smart investigation processing failed: %s", e)
+            _LOGGER.error("❌ Enhanced investigation processing failed: %s", e)
             return None
     
     async def _should_log_update(self, key180_raw: str, data_hash: str, raw_data: Dict[str, Any]) -> Tuple[bool, str]:
@@ -162,7 +241,7 @@ class SmartKey180InvestigationLogger:
         return False, "minor_change_skipped"
     
     async def _analyze_change_significance(self, current_data: str, previous_data: str) -> Dict[str, Any]:
-        """Analyze if changes are significant for accessory wear detection."""
+        """Enhanced analysis if changes are significant for accessory wear detection."""
         try:
             current_bytes = base64.b64decode(current_data)
             previous_bytes = base64.b64decode(previous_data)
@@ -173,6 +252,10 @@ class SmartKey180InvestigationLogger:
             significant_changes = []
             accessory_wear_changes = []
             
+            # NEW: Load sensors config for enhanced position analysis
+            sensors_config = await self._load_sensors_config()
+            known_positions = self._extract_known_positions_from_config(sensors_config)
+            
             for i, (curr, prev) in enumerate(zip(current_bytes, previous_bytes)):
                 if curr != prev:
                     diff = curr - prev
@@ -182,19 +265,27 @@ class SmartKey180InvestigationLogger:
                         abs(diff) <= self.significant_change_threshold and 
                         diff < 0):  # Decrease indicates wear
                         
+                        # Enhanced analysis with sensors config data
+                        accessory_info = self._find_accessory_for_position(i, sensors_config)
+                        
                         accessory_wear_changes.append({
                             "position": i,
                             "previous": prev,
                             "current": curr,
                             "decrease": abs(diff),
-                            "likely_accessory": self._guess_accessory_type(i)
+                            "likely_accessory": accessory_info.get("name", "unknown"),
+                            "expected_percentage": accessory_info.get("expected_percentage"),
+                            "config_match": accessory_info.get("config_match", False),
+                            "confidence": self._calculate_position_confidence(i, curr, accessory_info)
                         })
                     
                     significant_changes.append({
                         "position": i,
                         "previous": prev,
                         "current": curr,
-                        "difference": diff
+                        "difference": diff,
+                        "in_known_positions": i in known_positions,
+                        "accessory_candidate": 1 <= min(curr, prev) <= 100
                     })
             
             return {
@@ -202,12 +293,112 @@ class SmartKey180InvestigationLogger:
                 "change_count": len(significant_changes),
                 "accessory_wear_changes": accessory_wear_changes,
                 "total_changes": significant_changes,
+                "known_position_changes": [c for c in significant_changes if c["in_known_positions"]],
                 "reason": f"{len(accessory_wear_changes)} accessory wear changes, {len(significant_changes)} total changes"
             }
             
         except Exception as e:
-            _LOGGER.error("❌ Change analysis failed: %s", e)
+            _LOGGER.error("❌ Enhanced change analysis failed: %s", e)
             return {"has_significant_changes": False, "change_count": 0, "reason": f"Analysis error: {e}"}
+    
+    def _extract_known_positions_from_config(self, sensors_config: Dict[str, Any]) -> List[int]:
+        """Extract known byte positions from sensors configuration."""
+        known_positions = []
+        
+        # From template config
+        template_sensors = sensors_config.get("template_config", {}).get("accessory_sensors", {})
+        for sensor_data in template_sensors.values():
+            pos = sensor_data.get("byte_position")
+            if isinstance(pos, int) and pos not in known_positions:
+                known_positions.append(pos)
+        
+        # From device config
+        device_sensors = sensors_config.get("device_config", {}).get("accessory_sensors", {})
+        for sensor_data in device_sensors.values():
+            pos = sensor_data.get("byte_position")
+            if isinstance(pos, int) and pos not in known_positions:
+                known_positions.append(pos)
+        
+        # Add known research positions
+        research_positions = [5, 37, 75, 95, 125, 146, 228]
+        for pos in research_positions:
+            if pos not in known_positions:
+                known_positions.append(pos)
+        
+        return sorted(known_positions)
+    
+    def _find_accessory_for_position(self, position: int, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Find accessory information for a given byte position."""
+        # Check device config first (most specific)
+        device_sensors = sensors_config.get("device_config", {}).get("accessory_sensors", {})
+        for sensor_id, sensor_data in device_sensors.items():
+            if sensor_data.get("byte_position") == position:
+                return {
+                    "name": sensor_data.get("name", sensor_id),
+                    "expected_percentage": sensor_data.get("current_life_remaining"),
+                    "config_match": True,
+                    "source": "device_config",
+                    "sensor_id": sensor_id
+                }
+        
+        # Check template config
+        template_sensors = sensors_config.get("template_config", {}).get("accessory_sensors", {})
+        for sensor_id, sensor_data in template_sensors.items():
+            if sensor_data.get("byte_position") == position:
+                return {
+                    "name": sensor_data.get("name", sensor_id),
+                    "expected_percentage": sensor_data.get("current_life_remaining"),
+                    "config_match": True,
+                    "source": "template_config",
+                    "sensor_id": sensor_id
+                }
+        
+        # Fallback to research-based guesses
+        position_map = {
+            5: {"name": "mop_cloth", "expected_percentage": None},
+            37: {"name": "side_brush", "expected_percentage": None},
+            75: {"name": "cleaning_tray", "expected_percentage": None},
+            95: {"name": "sensors_status", "expected_percentage": None},
+            125: {"name": "brush_guard", "expected_percentage": None},
+            146: {"name": "rolling_brush", "expected_percentage": None},
+            228: {"name": "dust_filter", "expected_percentage": None}
+        }
+        
+        if position in position_map:
+            return {
+                "name": position_map[position]["name"],
+                "expected_percentage": None,
+                "config_match": False,
+                "source": "research_guess",
+                "sensor_id": None
+            }
+        
+        return {
+            "name": "unknown_accessory",
+            "expected_percentage": None,
+            "config_match": False,
+            "source": "unknown",
+            "sensor_id": None
+        }
+    
+    def _calculate_position_confidence(self, position: int, detected_value: int, accessory_info: Dict[str, Any]) -> str:
+        """Calculate confidence level for accessory position match."""
+        if accessory_info.get("config_match"):
+            expected = accessory_info.get("expected_percentage")
+            if expected is not None:
+                diff = abs(detected_value - expected)
+                if diff <= 2:
+                    return "very_high"
+                elif diff <= 5:
+                    return "high"
+                else:
+                    return "medium"
+            else:
+                return "medium"
+        elif accessory_info.get("source") == "research_guess":
+            return "low"
+        else:
+            return "very_low"
     
     async def _detect_cleaning_activity(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """Detect if current data indicates cleaning activity."""
@@ -250,9 +441,10 @@ class SmartKey180InvestigationLogger:
         
         return mode, filename
     
-    async def _create_smart_analysis(self, key180_raw: str, full_raw_data: Dict[str, Any], 
-                                   log_mode: LoggingMode, log_reason: str) -> Dict[str, Any]:
-        """Create comprehensive but efficient analysis."""
+    async def _create_enhanced_analysis(self, key180_raw: str, full_raw_data: Dict[str, Any], 
+                                       log_mode: LoggingMode, log_reason: str, 
+                                       sensors_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Create comprehensive analysis with sensors config integration."""
         analysis = {
             "metadata": {
                 "device_id": self.device_id,
@@ -261,8 +453,10 @@ class SmartKey180InvestigationLogger:
                 "log_mode": log_mode.value,
                 "log_reason": log_reason,
                 "update_number": self.total_updates_received,
-                "smart_logger_version": "2.0",
-                "file_number": self.meaningful_logs_created + 1
+                "smart_logger_version": "3.0_enhanced",
+                "file_number": self.meaningful_logs_created + 1,
+                "self_contained": True,
+                "includes_sensors_config": True
             },
             "smart_logging_info": {
                 "total_updates_received": self.total_updates_received,
@@ -276,12 +470,16 @@ class SmartKey180InvestigationLogger:
                 "data_hash": hashlib.md5(key180_raw.encode()).hexdigest()
             },
             "change_analysis": {},
-            "context_data": self._extract_efficient_context(full_raw_data)
+            "context_data": self._extract_efficient_context(full_raw_data),
+            # NEW: Complete sensors configuration reference
+            "sensors_reference": await self._create_sensors_reference(sensors_config),
+            # NEW: Enhanced accessory analysis with config comparison
+            "accessory_analysis": await self._create_enhanced_accessory_analysis(key180_raw, sensors_config)
         }
         
         # Add detailed byte analysis only for baseline and significant changes
         if log_mode in [LoggingMode.BASELINE, LoggingMode.CLEANING_DETECTED] or "significant_change" in log_reason:
-            analysis["detailed_byte_analysis"] = await self._create_detailed_byte_analysis(key180_raw)
+            analysis["detailed_byte_analysis"] = await self._create_detailed_byte_analysis(key180_raw, sensors_config)
         
         # Add comparison if we have previous data
         if self.last_logged_data and self.last_logged_data != key180_raw:
@@ -289,39 +487,150 @@ class SmartKey180InvestigationLogger:
         
         return analysis
     
-    async def _create_detailed_byte_analysis(self, key180_raw: str) -> Dict[str, Any]:
-        """Create detailed byte analysis for important logs."""
+    async def _create_sensors_reference(self, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Create complete sensors configuration reference for self-contained analysis."""
+        try:
+            template_config = sensors_config.get("template_config", {})
+            device_config = sensors_config.get("device_config", {})
+            
+            reference = {
+                "config_availability": {
+                    "template_available": sensors_config.get("template_available", False),
+                    "device_config_available": sensors_config.get("device_config_available", False),
+                    "load_timestamp": sensors_config.get("load_timestamp")
+                },
+                "android_app_percentages": {},
+                "investigation_targets": {},
+                "known_byte_positions": {},
+                "template_inheritance_status": device_config.get("device_info", {}).get("inherited_from_template", False)
+            }
+            
+            # Extract Android app percentages from template
+            template_sensors = template_config.get("accessory_sensors", {})
+            for sensor_id, sensor_data in template_sensors.items():
+                reference["android_app_percentages"][sensor_id] = {
+                    "name": sensor_data.get("name"),
+                    "percentage": sensor_data.get("current_life_remaining"),
+                    "byte_position": sensor_data.get("byte_position"),
+                    "enabled": sensor_data.get("enabled", False),
+                    "investigation_target": sensor_data.get("investigation_target", False)
+                }
+                
+                if sensor_data.get("investigation_target"):
+                    reference["investigation_targets"][sensor_id] = {
+                        "name": sensor_data.get("name"),
+                        "expected_percentage": sensor_data.get("current_life_remaining"),
+                        "search_strategy": sensor_data.get("search_strategy"),
+                        "notes": sensor_data.get("notes")
+                    }
+                
+                # Track known positions
+                pos = sensor_data.get("byte_position")
+                if isinstance(pos, int):
+                    reference["known_byte_positions"][str(pos)] = {
+                        "accessory": sensor_data.get("name"),
+                        "expected_percentage": sensor_data.get("current_life_remaining"),
+                        "source": "template"
+                    }
+            
+            # Extract current device config
+            device_sensors = device_config.get("accessory_sensors", {})
+            reference["current_device_config"] = {}
+            for sensor_id, sensor_data in device_sensors.items():
+                reference["current_device_config"][sensor_id] = {
+                    "name": sensor_data.get("name"),
+                    "percentage": sensor_data.get("current_life_remaining"),
+                    "byte_position": sensor_data.get("byte_position"),
+                    "enabled": sensor_data.get("enabled", False),
+                    "last_updated": sensor_data.get("last_updated")
+                }
+                
+                # Override known positions with device config if available
+                pos = sensor_data.get("byte_position")
+                if isinstance(pos, int):
+                    reference["known_byte_positions"][str(pos)] = {
+                        "accessory": sensor_data.get("name"),
+                        "expected_percentage": sensor_data.get("current_life_remaining"),
+                        "source": "device_config"
+                    }
+            
+            # Investigation workflow instructions
+            reference["investigation_workflow"] = [
+                "1. Compare detected bytes with android_app_percentages",
+                "2. Look for exact matches (Position 15: 97% = Brush Guard 97%)",
+                "3. Run cleaning cycle and check for 1-3% decreases",
+                "4. Update byte_position in sensors config when confirmed",
+                "5. Enable sensor and test accuracy over multiple cycles"
+            ]
+            
+            # Current investigation status
+            reference["current_investigation_focus"] = {
+                "suspected_position": 15,
+                "detected_percentage": "TBD - check detailed_byte_analysis",
+                "expected_accessory": "Brush Guard",
+                "expected_percentage": 97,
+                "match_confidence": "TBD - exact match pending cleaning test",
+                "next_step": "Run cleaning cycle, capture post-cleaning, verify decrease"
+            }
+            
+            return reference
+            
+        except Exception as e:
+            return {
+                "error": f"Failed to create sensors reference: {e}",
+                "config_availability": {
+                    "template_available": False,
+                    "device_config_available": False,
+                    "error": str(e)
+                }
+            }
+    
+    async def _create_enhanced_accessory_analysis(self, key180_raw: str, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Create enhanced accessory analysis with config comparison."""
         try:
             binary_data = base64.b64decode(key180_raw)
             
-            # Focus on known accessory positions
-            known_positions = [5, 37, 75, 95, 125, 146, 228]
-            accessory_analysis = {}
+            analysis = {
+                "total_bytes": len(binary_data),
+                "hex_dump": binary_data.hex(),
+                "known_positions_analysis": {},
+                "percentage_candidates": [],
+                "position_confidence_map": {}
+            }
             
+            # Analyze known positions with enhanced confidence
             for pos in known_positions:
                 if pos < len(binary_data):
                     byte_val = binary_data[pos]
-                    accessory_analysis[f"position_{pos}"] = {
+                    accessory_info = self._find_accessory_for_position(pos, sensors_config)
+                    
+                    analysis["known_positions_analysis"][str(pos)] = {
+                        "position": pos,
                         "byte_value": byte_val,
                         "hex": f"0x{byte_val:02x}",
-                        "is_percentage": 1 <= byte_val <= 100,
-                        "likely_accessory": self._guess_accessory_type(pos),
-                        "confidence": self._calculate_confidence(pos, byte_val)
+                        "accessory_info": accessory_info,
+                        "confidence": self._calculate_position_confidence(pos, byte_val, accessory_info),
+                        "is_percentage": 1 <= byte_val <= 100
                     }
             
-            return {
-                "total_bytes": len(binary_data),
-                "hex_dump": binary_data.hex(),
-                "known_accessory_positions": accessory_analysis,
-                "percentage_candidates": [
-                    {"position": i, "value": byte_val}
-                    for i, byte_val in enumerate(binary_data)
-                    if 1 <= byte_val <= 100
-                ][:20]  # Limit to first 20 candidates
-            }
+            # Enhanced percentage candidates analysis
+            for i, byte_val in enumerate(binary_data):
+                if 1 <= byte_val <= 100:
+                    accessory_info = self._find_accessory_for_position(i, sensors_config)
+                    
+                    analysis["percentage_candidates"].append({
+                        "position": i,
+                        "value": byte_val,
+                        "hex": f"0x{byte_val:02x}",
+                        "accessory_candidate": accessory_info.get("name", "unknown"),
+                        "config_match": accessory_info.get("config_match", False),
+                        "confidence": self._calculate_position_confidence(i, byte_val, accessory_info)
+                    })
+            
+            return analysis
             
         except Exception as e:
-            return {"error": f"Byte analysis failed: {e}"}
+            return {"error": f"Detailed byte analysis failed: {e}"}
     
     def _extract_efficient_context(self, full_raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract only essential context data to keep files smaller."""
@@ -335,32 +644,6 @@ class SmartKey180InvestigationLogger:
         context["total_keys_available"] = len(full_raw_data)
         return context
     
-    def _guess_accessory_type(self, position: int) -> str:
-        """Guess accessory type based on known positions."""
-        position_map = {
-            5: "mop_cloth",
-            37: "side_brush",
-            75: "cleaning_tray", 
-            95: "sensors_status",
-            125: "brush_guard",
-            146: "rolling_brush",
-            228: "dust_filter"
-        }
-        return position_map.get(position, "unknown_accessory")
-    
-    def _calculate_confidence(self, position: int, value: int) -> str:
-        """Calculate confidence for accessory detection."""
-        known_positions = [5, 37, 75, 95, 125, 146, 228]
-        
-        if position in known_positions and 1 <= value <= 100:
-            return "high"
-        elif position in known_positions:
-            return "medium"
-        elif 1 <= value <= 100:
-            return "low"
-        else:
-            return "very_low"
-    
     async def _update_state_after_logging(self, key180_raw: str, data_hash: str, 
                                         log_mode: LoggingMode, filepath: Path) -> None:
         """Update internal state after successful logging."""
@@ -371,7 +654,7 @@ class SmartKey180InvestigationLogger:
         if log_mode == LoggingMode.BASELINE:
             self.baseline_captured = True
             self.current_mode = LoggingMode.SMART_MONITORING
-            _LOGGER.info("🎯 Baseline captured, switching to smart monitoring mode")
+            _LOGGER.info("🎯 Enhanced baseline captured with sensors config, switching to smart monitoring mode")
     
     async def _cleanup_old_files(self) -> None:
         """Cleanup old monitoring files to prevent bloat."""
@@ -395,7 +678,7 @@ class SmartKey180InvestigationLogger:
     
     # Manual trigger methods
     async def capture_baseline(self, raw_data: Dict[str, Any]) -> Optional[str]:
-        """Manually capture baseline."""
+        """Manually capture baseline with enhanced sensors config."""
         if "180" not in raw_data:
             return None
         
@@ -411,7 +694,7 @@ class SmartKey180InvestigationLogger:
         return result
     
     async def capture_post_cleaning(self, raw_data: Dict[str, Any]) -> Optional[str]:
-        """Manually capture post-cleaning data."""
+        """Manually capture post-cleaning data with enhanced analysis."""
         if "180" not in raw_data:
             return None
         
@@ -419,8 +702,11 @@ class SmartKey180InvestigationLogger:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         filename = f"key180_post_cleaning_{timestamp}.json"
         
-        analysis_data = await self._create_smart_analysis(
-            raw_data["180"], raw_data, LoggingMode.POST_CLEANING, "manual_post_cleaning"
+        # Load sensors config for enhanced analysis
+        sensors_config = await self._load_sensors_config()
+        
+        analysis_data = await self._create_enhanced_analysis(
+            raw_data["180"], raw_data, LoggingMode.POST_CLEANING, "manual_post_cleaning", sensors_config
         )
         
         filepath = self.investigation_dir / filename
@@ -435,11 +721,14 @@ class SmartKey180InvestigationLogger:
         return str(filepath)
     
     async def generate_session_summary(self) -> str:
-        """Generate smart session summary."""
-        summary_file = self.investigation_dir / f"smart_session_summary_{self.session_id}.json"
+        """Generate enhanced session summary with sensors config analysis."""
+        summary_file = self.investigation_dir / f"enhanced_session_summary_{self.session_id}.json"
         
         # Analyze all files in this session
         session_files = [f for f in self.investigation_dir.glob("*.json") if self.session_id in f.name]
+        
+        # Load sensors config for summary
+        sensors_config = await self._load_sensors_config()
         
         summary = {
             "session_info": {
@@ -447,7 +736,8 @@ class SmartKey180InvestigationLogger:
                 "device_id": self.device_id,
                 "start_time": self.session_id,
                 "end_time": datetime.now().isoformat(),
-                "smart_logger_version": "2.0"
+                "enhanced_logger_version": "3.0",
+                "sensors_config_integration": True
             },
             "efficiency_stats": {
                 "total_updates_received": self.total_updates_received,
@@ -458,19 +748,20 @@ class SmartKey180InvestigationLogger:
             },
             "files_created": [f.name for f in session_files],
             "investigation_directory": str(self.investigation_dir),
-            "analysis_recommendations": [
-                "1. Focus on files with 'significant_change' in the name for wear detection",
-                "2. Compare baseline vs post_cleaning files for comprehensive analysis",
-                "3. Look for byte decreases in positions 5, 37, 75, 125, 146, 228",
-                "4. Files with 'cleaning_activity' show data during actual cleaning cycles",
-                "5. Smart logger has eliminated duplicate monitoring - only meaningful changes logged"
+            "sensors_config_summary": await self._create_sensors_reference(sensors_config),
+            "enhanced_features": [
+                "✅ Self-contained analysis files with complete reference data",
+                "✅ Android app percentages included for comparison",
+                "✅ Position 15 (97%) focus for Brush Guard confirmation", 
+                "✅ Enhanced change detection with config validation",
+                "✅ Complete audit trail with sensors configuration"
             ],
-            "smart_features": [
-                "✅ Duplicate detection prevents file bloat",
-                "✅ Change significance analysis focuses on accessory wear",
-                "✅ Automatic cleanup maintains manageable file count",
-                "✅ Intelligent mode switching optimizes logging strategy",
-                "✅ Cleaning activity detection captures relevant moments"
+            "analysis_recommendations": [
+                "1. Check Position 15 analysis in baseline file for Brush Guard match",
+                "2. Run cleaning cycle and capture post-cleaning data",
+                "3. Compare Position 15 before/after for 1-3% decrease",
+                "4. If confirmed, update sensors config with Position 15 = Brush Guard",
+                "5. Repeat process for other accessories using Android app percentages"
             ]
         }
         
@@ -478,19 +769,18 @@ class SmartKey180InvestigationLogger:
             async with aiofiles.open(summary_file, 'w', encoding='utf-8') as f:
                 await f.write(json.dumps(summary, indent=2, ensure_ascii=False))
             
-            _LOGGER.info("📋 Smart session summary created: %s", summary_file.name)
-            _LOGGER.info("📊 Efficiency: %d updates → %d files (%d%% reduction)", 
-                        self.total_updates_received, self.meaningful_logs_created,
-                        int((self.duplicates_skipped / max(1, self.total_updates_received)) * 100))
+            _LOGGER.info("📋 Enhanced session summary created: %s", summary_file.name)
+            _LOGGER.info("📊 Enhanced efficiency: %d updates → %d self-contained files", 
+                        self.total_updates_received, self.meaningful_logs_created)
             
             return str(summary_file)
             
         except Exception as e:
-            _LOGGER.error("❌ Failed to create smart session summary: %s", e)
+            _LOGGER.error("❌ Failed to create enhanced session summary: %s", e)
             return ""
     
     def get_smart_status(self) -> Dict[str, Any]:
-        """Get current smart logging status."""
+        """Get current enhanced smart logging status."""
         return {
             "mode": self.current_mode.value,
             "baseline_captured": self.baseline_captured,
@@ -500,7 +790,10 @@ class SmartKey180InvestigationLogger:
             "duplicates_skipped": self.duplicates_skipped,
             "efficiency_percentage": (self.duplicates_skipped / max(1, self.total_updates_received)) * 100,
             "last_log_time": self.last_log_time.isoformat() if self.last_log_time else None,
-            "investigation_directory": str(self.investigation_dir)
+            "investigation_directory": str(self.investigation_dir),
+            "enhanced_features": True,
+            "sensors_config_integration": self.sensors_config_file is not None,
+            "version": "3.0_enhanced"
         }
     
     def get_investigation_directory(self) -> str:
@@ -509,4 +802,94 @@ class SmartKey180InvestigationLogger:
     
     def get_session_id(self) -> str:
         """Get current session ID."""
-        return self.session_id
+        return self.session_id_bytes": len(binary_data),
+                "percentage_candidates": [],
+                "config_position_analysis": {},
+                "android_app_comparison": {},
+                "position_15_focus": {}
+            }
+            
+            # Find all percentage candidates (1-100 range)
+            for i, byte_val in enumerate(binary_data):
+                if 1 <= byte_val <= 100:
+                    analysis["percentage_candidates"].append({
+                        "position": i,
+                        "value": byte_val,
+                        "hex": f"0x{byte_val:02x}"
+                    })
+            
+            # Analyze known positions from config
+            template_sensors = sensors_config.get("template_config", {}).get("accessory_sensors", {})
+            for sensor_id, sensor_data in template_sensors.items():
+                pos = sensor_data.get("byte_position")
+                expected_pct = sensor_data.get("current_life_remaining")
+                
+                if isinstance(pos, int) and pos < len(binary_data):
+                    detected_val = binary_data[pos]
+                    
+                    analysis["config_position_analysis"][sensor_id] = {
+                        "position": pos,
+                        "expected_percentage": expected_pct,
+                        "detected_value": detected_val,
+                        "match": detected_val == expected_pct if expected_pct else False,
+                        "difference": abs(detected_val - expected_pct) if expected_pct else None,
+                        "accessory_name": sensor_data.get("name"),
+                        "enabled": sensor_data.get("enabled", False)
+                    }
+            
+            # Android app comparison for all percentage candidates
+            for candidate in analysis["percentage_candidates"]:
+                pos = candidate["position"]
+                val = candidate["value"]
+                
+                # Find matching Android app percentages
+                matches = []
+                for sensor_id, sensor_data in template_sensors.items():
+                    expected = sensor_data.get("current_life_remaining")
+                    if expected and abs(val - expected) <= 2:  # Within 2% tolerance
+                        matches.append({
+                            "sensor_id": sensor_id,
+                            "accessory_name": sensor_data.get("name"),
+                            "expected_percentage": expected,
+                            "difference": abs(val - expected),
+                            "exact_match": val == expected
+                        })
+                
+                if matches:
+                    analysis["android_app_comparison"][str(pos)] = {
+                        "position": pos,
+                        "detected_value": val,
+                        "matches": matches,
+                        "best_match": min(matches, key=lambda x: x["difference"])
+                    }
+            
+            # Special focus on Position 15 (suspected Brush Guard)
+            if 15 < len(binary_data):
+                pos_15_value = binary_data[15]
+                analysis["position_15_focus"] = {
+                    "position": 15,
+                    "detected_value": pos_15_value,
+                    "suspected_accessory": "Brush Guard",
+                    "expected_percentage": 97,  # From Android app
+                    "exact_match": pos_15_value == 97,
+                    "difference": abs(pos_15_value - 97),
+                    "confidence": "very_high" if pos_15_value == 97 else "medium",
+                    "testing_recommendation": "Run cleaning cycle and verify this position decreases by 1-3%",
+                    "confirmation_status": "pending_cleaning_test"
+                }
+            
+            return analysis
+            
+        except Exception as e:
+            return {"error": f"Enhanced accessory analysis failed: {e}"}
+    
+    async def _create_detailed_byte_analysis(self, key180_raw: str, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Create detailed byte analysis enhanced with sensors config data."""
+        try:
+            binary_data = base64.b64decode(key180_raw)
+            
+            # Get known positions from config
+            known_positions = self._extract_known_positions_from_config(sensors_config)
+            
+            analysis = {
+                "total
