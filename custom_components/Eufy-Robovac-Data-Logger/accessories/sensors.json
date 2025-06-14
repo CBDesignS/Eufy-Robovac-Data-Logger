@@ -12,7 +12,7 @@
       "name": "Rolling Brush",
       "description": "Main cleaning brush - primary debris collection mechanism",
       "key": "180",
-      "byte_position": 0,
+      "byte_position": null,
       "current_life_remaining": 99,
       "hours_remaining": 358,
       "max_life_hours": 360,
@@ -20,15 +20,15 @@
       "enabled": false,
       "auto_update": false,
       "last_updated": "2025-06-14T00:00:00.000000",
-      "notes": "INVESTIGATION MODE: Byte position unknown - use Key 180 analysis to find correct location",
+      "notes": "INVESTIGATION MODE: Byte position unknown - analyze Key 180 investigation files to discover correct location",
       "investigation_target": true,
-      "suspected_positions": [140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150]
+      "search_strategy": "find_decreasing_percentage_bytes_after_cleaning"
     },
     "side_brush": {
       "name": "Side Brush",
       "description": "Edge cleaning brush - sweeps debris into main brush path",
       "key": "180",
-      "byte_position": 10,
+      "byte_position": null,
       "current_life_remaining": 98,
       "hours_remaining": 178,
       "max_life_hours": 180,
@@ -36,15 +36,15 @@
       "enabled": false,
       "auto_update": false,
       "last_updated": "2025-06-14T00:00:00.000000",
-      "notes": "INVESTIGATION MODE: Byte position unknown - use Key 180 analysis to find correct location",
+      "notes": "INVESTIGATION MODE: Byte position unknown - analyze Key 180 investigation files to discover correct location",
       "investigation_target": true,
-      "suspected_positions": [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
+      "search_strategy": "find_decreasing_percentage_bytes_after_cleaning"
     },
     "dust_filter": {
       "name": "Dust Filter",
       "description": "Air filtration system - captures fine dust and allergens",
       "key": "180",
-      "byte_position": 20,
+      "byte_position": null,
       "current_life_remaining": 99,
       "hours_remaining": 358,
       "max_life_hours": 360,
@@ -52,15 +52,15 @@
       "enabled": false,
       "auto_update": false,
       "last_updated": "2025-06-14T00:00:00.000000",
-      "notes": "INVESTIGATION MODE: Byte position unknown - use Key 180 analysis to find correct location",
+      "notes": "INVESTIGATION MODE: Byte position unknown - analyze Key 180 investigation files to discover correct location",
       "investigation_target": true,
-      "suspected_positions": [220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230]
+      "search_strategy": "find_decreasing_percentage_bytes_after_cleaning"
     },
     "mop_cloth": {
       "name": "Mop Cloth",
       "description": "Mopping attachment - for wet cleaning hard floors",
       "key": "180",
-      "byte_position": 30,
+      "byte_position": null,
       "current_life_remaining": 98,
       "hours_remaining": 178,
       "max_life_hours": 180,
@@ -68,15 +68,15 @@
       "enabled": false,
       "auto_update": false,
       "last_updated": "2025-06-14T00:00:00.000000",
-      "notes": "INVESTIGATION MODE: Byte position unknown - use Key 180 analysis to find correct location",
+      "notes": "INVESTIGATION MODE: Byte position unknown - analyze Key 180 investigation files to discover correct location",
       "investigation_target": true,
-      "suspected_positions": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      "search_strategy": "find_decreasing_percentage_bytes_after_cleaning"
     },
     "cliff_bump_sensors": {
       "name": "Cliff/Bump Sensors",
       "description": "Navigation sensors - prevents falls and detects obstacles",
       "key": "180",
-      "byte_position": 40,
+      "byte_position": null,
       "current_life_remaining": 94,
       "hours_remaining": 33,
       "max_life_hours": 35,
@@ -84,16 +84,15 @@
       "enabled": false,
       "auto_update": false,
       "last_updated": "2025-06-14T00:00:00.000000",
-      "notes": "INVESTIGATION MODE: May be status flag (0xFF) rather than percentage - investigate byte patterns",
+      "notes": "INVESTIGATION MODE: Byte position unknown - analyze Key 180 investigation files to discover correct location",
       "investigation_target": true,
-      "suspected_positions": [90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100],
-      "warning": "May show 255 (0xFF) - this could be a status flag, not wear percentage"
+      "search_strategy": "find_decreasing_percentage_bytes_after_cleaning"
     },
     "brush_guard": {
       "name": "Brush Guard",
       "description": "Protective guard for rolling brush - prevents hair tangles",
       "key": "180",
-      "byte_position": 50,
+      "byte_position": null,
       "current_life_remaining": 98,
       "hours_remaining": 118,
       "max_life_hours": 120,
@@ -101,15 +100,15 @@
       "enabled": false,
       "auto_update": false,
       "last_updated": "2025-06-14T00:00:00.000000",
-      "notes": "INVESTIGATION MODE: Byte position unknown - use Key 180 analysis to find correct location",
+      "notes": "INVESTIGATION MODE: Byte position unknown - analyze Key 180 investigation files to discover correct location",
       "investigation_target": true,
-      "suspected_positions": [120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130]
+      "search_strategy": "find_decreasing_percentage_bytes_after_cleaning"
     },
     "cleaning_tray": {
       "name": "Cleaning Tray",
       "description": "Dust collection tray - holds debris during cleaning cycles",
       "key": "180",
-      "byte_position": 60,
+      "byte_position": null,
       "current_life_remaining": 96,
       "hours_remaining": 33,
       "max_life_hours": 35,
@@ -117,15 +116,15 @@
       "enabled": false,
       "auto_update": false,
       "last_updated": "2025-06-14T00:00:00.000000",
-      "notes": "INVESTIGATION MODE: Byte position unknown - use Key 180 analysis to find correct location",
+      "notes": "INVESTIGATION MODE: Byte position unknown - analyze Key 180 investigation files to discover correct location",
       "investigation_target": true,
-      "suspected_positions": [70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80]
+      "search_strategy": "find_decreasing_percentage_bytes_after_cleaning"
     },
     "water_tank_level": {
       "name": "Water Tank Level",
       "description": "Water tank level sensor - monitors remaining cleaning water",
       "key": "167",
-      "byte_position": 8,
+      "byte_position": null,
       "current_life_remaining": 88,
       "hours_remaining": 0,
       "max_life_hours": 0,
@@ -133,11 +132,9 @@
       "enabled": false,
       "auto_update": false,
       "last_updated": "2025-06-14T00:00:00.000000",
-      "notes": "SPECIAL CASE: Key 167 investigation - Android app research suggests byte 4 or 8",
+      "notes": "INVESTIGATION MODE: Byte position unknown - analyze Key 180 investigation files to discover correct location",
       "investigation_target": true,
-      "suspected_positions": [4, 6, 8, 10, 12, 14, 16, 18, 20],
-      "key_alternatives": ["167", "177", "178"],
-      "investigation_type": "water_level_percentage"
+      "search_strategy": "find_decreasing_percentage_bytes_after_cleaning"
     }
   },
   "discovery_settings": {
