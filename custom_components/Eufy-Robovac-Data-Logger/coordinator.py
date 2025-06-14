@@ -1,4 +1,4 @@
-"""Data update coordinator for Eufy Robovac Data Logger integration with Smart Investigation Mode."""
+"""Data update coordinator for Eufy Robovac Data Logger integration with Enhanced Smart Investigation Mode v3.0."""
 import asyncio
 import logging
 import time
@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EufyX10DebugCoordinator(DataUpdateCoordinator):
-    """Eufy Robovac Debugging data coordinator with RestConnect and Smart Investigation Mode."""
+    """Eufy Robovac Debugging data coordinator with RestConnect and Enhanced Smart Investigation Mode v3.0."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
@@ -31,7 +31,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.openudid = entry.data.get("openudid", f"ha_debug_{self.device_id}")
         self.debug_mode = entry.data.get("debug_mode", True)
         
-        # NEW: Smart Investigation Mode
+        # NEW: Enhanced Smart Investigation Mode v3.0
         self.investigation_mode = entry.data.get("investigation_mode", False)
         
         # Store raw data for debugging
@@ -62,39 +62,44 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.accessory_sensors = {}
         self.previous_accessory_data = {}
         
-        # NEW: Smart Investigation Mode Components
+        # NEW: Enhanced Smart Investigation Mode Components v3.0
         self.smart_investigation_logger = None
         self.last_key180_data = None
         self.cleaning_cycle_detected = False
         self.baseline_captured = False
         
-        # Initialize debug logger and smart investigation logger
+        # Initialize debug logger and enhanced smart investigation logger
         self.debug_logger = None
         if self.debug_mode:
             try:
                 from .async_debug_logger import AsyncEufyDebugLogger
                 self.debug_logger = AsyncEufyDebugLogger(self.device_id, hass.config.config_dir)
-                _LOGGER.info("🚀 DEBUG MODE: Coordinator initialized with RestConnect + smart investigation for device: %s", self.device_id)
+                _LOGGER.info("🚀 DEBUG MODE: Coordinator initialized with RestConnect + enhanced smart investigation v3.0 for device: %s", self.device_id)
             except Exception as e:
                 _LOGGER.error("Failed to initialize async debug logger: %s", e)
         
-        # Initialize SMART investigation logger if investigation mode enabled
+        # Initialize ENHANCED investigation logger v3.0 if investigation mode enabled
         if self.investigation_mode:
             try:
-                from .smart_investigation_logger import SmartKey180InvestigationLogger
-                self.smart_investigation_logger = SmartKey180InvestigationLogger(self.device_id, hass.config.config_dir)
-                _LOGGER.info("🔍 SMART INVESTIGATION MODE ENABLED: Intelligent Key 180 logging activated for device: %s", self.device_id)
+                from .enhanced_smart_investigation_logger import EnhancedSmartKey180InvestigationLogger
+                self.smart_investigation_logger = EnhancedSmartKey180InvestigationLogger(
+                    self.device_id, 
+                    hass.config.config_dir,
+                    str(integration_dir)  # NEW: Integration directory for sensors config access
+                )
+                _LOGGER.info("🔍 ENHANCED SMART INVESTIGATION MODE v3.0 ENABLED: Self-contained analysis with sensors config integration for device: %s", self.device_id)
                 _LOGGER.info("📂 Investigation files: %s", self.smart_investigation_logger.get_investigation_directory())
-                _LOGGER.info("🧠 Smart features: Change detection, duplicate prevention, auto-cleanup")
+                _LOGGER.info("🧠 Enhanced features: Sensors config integration, Position 15 focus, Android app comparison")
+                _LOGGER.info("✨ v3.0 Features: Self-contained files, complete reference data, enhanced change detection")
             except Exception as e:
-                _LOGGER.error("❌ Failed to initialize smart investigation logger: %s", e)
+                _LOGGER.error("❌ Failed to initialize enhanced smart investigation logger v3.0: %s", e)
                 self.investigation_mode = False  # Disable if can't initialize
         
         mode_description = []
         if self.debug_mode:
             mode_description.append("🐛 Debug")
         if self.investigation_mode:
-            mode_description.append("🔍 Smart Investigation")
+            mode_description.append("🔍 Enhanced Smart Investigation v3.0")
         
         _LOGGER.info("🚀 Coordinator initialized for device: %s [%s]", self.device_id, " + ".join(mode_description) if mode_description else "Standard")
         
@@ -106,7 +111,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         )
 
     async def async_config_entry_first_refresh(self) -> None:
-        """Handle first refresh with accessory config and smart investigation setup."""
+        """Handle first refresh with accessory config and enhanced smart investigation setup v3.0."""
         try:
             # Initialize accessory configuration
             await self._initialize_accessory_config()
@@ -114,9 +119,9 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             # Initialize RestConnect (will fallback to basic login if REST not available)
             await self._initialize_rest_client()
             
-            # Smart investigation mode first refresh
+            # Enhanced smart investigation mode v3.0 first refresh
             if self.investigation_mode:
-                await self._initialize_smart_investigation_mode()
+                await self._initialize_enhanced_smart_investigation_mode()
             
             # Call parent first refresh
             await super().async_config_entry_first_refresh()
@@ -125,21 +130,22 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             _LOGGER.error("❌ Failed during first refresh: %s", e)
             raise
 
-    async def _initialize_smart_investigation_mode(self) -> None:
-        """Initialize smart investigation mode logging and setup."""
+    async def _initialize_enhanced_smart_investigation_mode(self) -> None:
+        """Initialize enhanced smart investigation mode v3.0 logging and setup."""
         if not self.smart_investigation_logger:
             return
             
         try:
-            self._debug_log("🔍 Initializing Smart Investigation Mode for intelligent Key 180 analysis", "info", force=True)
+            self._debug_log("🔍 Initializing Enhanced Smart Investigation Mode v3.0 for intelligent Key 180 analysis", "info", force=True)
             self._debug_log(f"📂 Investigation directory: {self.smart_investigation_logger.get_investigation_directory()}", "info", force=True)
             self._debug_log(f"🔬 Session ID: {self.smart_investigation_logger.get_session_id()}", "info", force=True)
-            self._debug_log("🧠 SMART FEATURES: Change detection, duplicate prevention, auto-cleanup", "info", force=True)
-            self._debug_log("🎯 TARGET: Key 180 intelligent analysis - only logs meaningful changes", "info", force=True)
-            self._debug_log("📊 EFFICIENCY: Eliminates duplicate monitoring files", "info", force=True)
+            self._debug_log("🧠 ENHANCED FEATURES v3.0: Sensors config integration, self-contained files, Position 15 focus", "info", force=True)
+            self._debug_log("🎯 TARGET: Key 180 enhanced analysis with Android app comparison and config validation", "info", force=True)
+            self._debug_log("📊 EFFICIENCY: 80-90% file reduction with complete reference data in each file", "info", force=True)
+            self._debug_log("✨ NEW v3.0: Complete sensors.json reference data included in every analysis file", "info", force=True)
             
         except Exception as e:
-            self._debug_log(f"❌ Failed to initialize smart investigation mode: {e}", "error", force=True)
+            self._debug_log(f"❌ Failed to initialize enhanced smart investigation mode v3.0: {e}", "error", force=True)
 
     async def _initialize_accessory_config(self) -> None:
         """Initialize the accessory configuration system."""
@@ -279,7 +285,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("[DEBUG] %s", message)
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        """Fetch data from Eufy API with Smart Investigation Mode support."""
+        """Fetch data from Eufy API with Enhanced Smart Investigation Mode v3.0 support."""
         try:
             self.update_count += 1
             do_detailed = self._should_do_detailed_logging()
@@ -287,7 +293,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             if do_detailed:
                 mode_indicators = []
                 if self.investigation_mode:
-                    mode_indicators.append("🔍 SMART INVESTIGATION")
+                    mode_indicators.append("🔍 ENHANCED SMART INVESTIGATION v3.0")
                 if self.debug_mode:
                     mode_indicators.append("🐛 DEBUG")
                 
@@ -296,15 +302,15 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 self._debug_log("=" * 60, "info")
                 self._debug_log(f"=== EUFY ROBOVAC UPDATE #{self.update_count} ({mode_str}) ===", "info")
                 if self.investigation_mode:
-                    self._debug_log("=== 🧠 Smart Key 180 Investigation Mode Active ===", "info")
+                    self._debug_log("=== ✨ Enhanced Smart Key 180 Investigation v3.0 Active ===", "info")
                 self._debug_log("=" * 60, "info")
             
             # Fetch data using RestConnect (preferred) or fallback to basic login
             await self._fetch_eufy_data_with_rest()
             
-            # SMART INVESTIGATION MODE: Process Key 180 data intelligently
+            # ENHANCED SMART INVESTIGATION MODE v3.0: Process Key 180 data with sensors config integration
             if self.investigation_mode and "180" in self.raw_data:
-                await self._process_smart_investigation_data()
+                await self._process_enhanced_smart_investigation_data()
             
             # Process the sensor data
             await self._process_sensor_data()
@@ -322,7 +328,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 investigation_status = ""
                 if self.investigation_mode and self.smart_investigation_logger:
                     smart_status = self.smart_investigation_logger.get_smart_status()
-                    investigation_status = f" [🧠 Smart: {smart_status['meaningful_logs']}/{smart_status['total_updates']} files, {smart_status['efficiency_percentage']:.1f}% efficient]"
+                    investigation_status = f" [✨ Enhanced v3.0: {smart_status['meaningful_logs']}/{smart_status['total_updates']} files, {smart_status['efficiency_percentage']:.1f}% efficient]"
                 
                 self._debug_log(f"✅ Update #{self.update_count} completed successfully{investigation_status}", "info")
             else:
@@ -451,7 +457,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     self.parsed_data["work_status"] = work_status
                     self._debug_log(f"🔧 Work Status: {work_status} (Key 153)", "debug")
                     
-                    # Store for smart investigation cleaning detection
+                    # Store for enhanced smart investigation cleaning detection
                     if hasattr(self, '_last_work_status'):
                         if self._last_work_status != work_status:
                             self._debug_log(f"🔄 Work status changed: {self._last_work_status} → {work_status}", "info")
@@ -565,7 +571,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             self.previous_accessory_data = accessory_data.copy()
             
             if changes_detected:
-                self._debug_log("🎯 Accessory changes detected - logged for investigation", "info")
+                self._debug_log("🎯 Accessory changes detected - logged for enhanced investigation v3.0", "info")
             
             self._debug_log(f"✅ Processed {len(accessory_data)} accessory sensors", "debug")
             
@@ -573,32 +579,32 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             self._debug_log(f"❌ Accessory data processing error: {e}", "error", force=True)
             self.parsed_data["accessory_sensors"] = {}
 
-    async def _process_smart_investigation_data(self) -> None:
-        """Process Key 180 data using smart investigation logger."""
+    async def _process_enhanced_smart_investigation_data(self) -> None:
+        """Process Key 180 data using enhanced smart investigation logger v3.0."""
         if not self.smart_investigation_logger or "180" not in self.raw_data:
             return
             
         try:
-            # Use smart logger to process the update
+            # Use enhanced smart logger v3.0 to process the update with sensors config integration
             result_file = await self.smart_investigation_logger.process_key180_update(self.raw_data)
             
             if result_file:
                 filename = Path(result_file).name
-                self._debug_log(f"🧠 Smart Investigation: Meaningful change logged to {filename}", "info")
+                self._debug_log(f"✨ Enhanced Smart Investigation v3.0: Self-contained analysis file created: {filename}", "info")
                 
-                # Get smart status for logging
+                # Get enhanced smart status for logging
                 smart_status = self.smart_investigation_logger.get_smart_status()
                 efficiency = smart_status.get('efficiency_percentage', 0)
-                self._debug_log(f"📊 Smart Stats: {smart_status['meaningful_logs']}/{smart_status['total_updates']} files ({efficiency:.1f}% efficient)", "debug")
+                self._debug_log(f"📊 Enhanced Stats v3.0: {smart_status['meaningful_logs']}/{smart_status['total_updates']} files ({efficiency:.1f}% efficient, sensors config integrated)", "debug")
             else:
                 # No file created - either no change or duplicate
                 smart_status = self.smart_investigation_logger.get_smart_status()
                 if smart_status['total_updates'] % 10 == 0:  # Log efficiency every 10 updates
                     efficiency = smart_status.get('efficiency_percentage', 0)
-                    self._debug_log(f"🧠 Smart Investigation: No change detected (Efficiency: {efficiency:.1f}%)", "debug")
+                    self._debug_log(f"✨ Enhanced Smart Investigation v3.0: No change detected (Efficiency: {efficiency:.1f}%)", "debug")
             
         except Exception as e:
-            self._debug_log(f"❌ Smart investigation processing error: {e}", "error", force=True)
+            self._debug_log(f"❌ Enhanced smart investigation v3.0 processing error: {e}", "error", force=True)
 
     def _log_brief_status(self) -> None:
         """Log a brief status update between detailed logs."""
@@ -621,12 +627,12 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             # Data source emoji
             source_emoji = "🌐" if "RestConnect" in data_source else "📱"
             
-            # Smart investigation status
+            # Enhanced smart investigation status v3.0
             investigation_emoji = ""
             if self.investigation_mode and self.smart_investigation_logger:
                 smart_status = self.smart_investigation_logger.get_smart_status()
                 efficiency = smart_status.get('efficiency_percentage', 0)
-                investigation_emoji = f" 🧠{efficiency:.0f}%"
+                investigation_emoji = f" ✨{efficiency:.0f}%"
             elif self.investigation_mode and "180" in self.raw_data:
                 investigation_emoji = " 🔍"
             
@@ -683,9 +689,9 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             }
 
     async def capture_investigation_baseline(self) -> str:
-        """Manually capture baseline for smart investigation."""
+        """Manually capture baseline for enhanced smart investigation v3.0."""
         if not self.smart_investigation_logger:
-            return "Smart Investigation mode not enabled"
+            return "Enhanced Smart Investigation mode v3.0 not enabled"
             
         try:
             if "180" not in self.raw_data:
@@ -694,18 +700,18 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             result_file = await self.smart_investigation_logger.capture_baseline(self.raw_data)
             if result_file:
                 filename = Path(result_file).name
-                self._debug_log(f"🎯 Manual baseline captured: {filename}", "info", force=True)
-                return f"Smart baseline captured: {filename}"
+                self._debug_log(f"🎯 Manual enhanced baseline captured v3.0: {filename}", "info", force=True)
+                return f"Enhanced smart baseline captured v3.0: {filename}"
             else:
-                return "Failed to capture baseline"
+                return "Failed to capture enhanced baseline"
                 
         except Exception as e:
-            return f"Error capturing baseline: {e}"
+            return f"Error capturing enhanced baseline v3.0: {e}"
 
     async def capture_investigation_post_cleaning(self) -> str:
-        """Manually capture post-cleaning data for smart investigation."""
+        """Manually capture post-cleaning data for enhanced smart investigation v3.0."""
         if not self.smart_investigation_logger:
-            return "Smart Investigation mode not enabled"
+            return "Enhanced Smart Investigation mode v3.0 not enabled"
             
         try:
             if "180" not in self.raw_data:
@@ -714,18 +720,18 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             result_file = await self.smart_investigation_logger.capture_post_cleaning(self.raw_data)
             if result_file:
                 filename = Path(result_file).name
-                self._debug_log(f"📊 Manual post-cleaning captured: {filename}", "info", force=True)
-                return f"Smart post-cleaning captured: {filename}"
+                self._debug_log(f"📊 Manual enhanced post-cleaning captured v3.0: {filename}", "info", force=True)
+                return f"Enhanced smart post-cleaning captured v3.0: {filename}"
             else:
-                return "Failed to capture post-cleaning data"
+                return "Failed to capture enhanced post-cleaning data"
                 
         except Exception as e:
-            return f"Error capturing post-cleaning: {e}"
+            return f"Error capturing enhanced post-cleaning v3.0: {e}"
 
     async def get_investigation_summary(self) -> str:
-        """Get smart investigation session summary."""
+        """Get enhanced smart investigation session summary v3.0."""
         if not self.smart_investigation_logger:
-            return "Smart Investigation mode not enabled"
+            return "Enhanced Smart Investigation mode v3.0 not enabled"
             
         try:
             summary_file = await self.smart_investigation_logger.generate_session_summary()
@@ -733,27 +739,28 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 filename = Path(summary_file).name
                 smart_status = self.smart_investigation_logger.get_smart_status()
                 efficiency = smart_status.get('efficiency_percentage', 0)
-                self._debug_log(f"📋 Smart session summary created: {filename} (Efficiency: {efficiency:.1f}%)", "info", force=True)
-                return f"Smart session summary: {filename}"
+                self._debug_log(f"📋 Enhanced smart session summary v3.0 created: {filename} (Efficiency: {efficiency:.1f}%)", "info", force=True)
+                return f"Enhanced smart session summary v3.0: {filename}"
             else:
-                return "Failed to generate summary"
+                return "Failed to generate enhanced summary"
                 
         except Exception as e:
-            return f"Error generating summary: {e}"
+            return f"Error generating enhanced summary v3.0: {e}"
 
     def get_investigation_status(self) -> Dict[str, Any]:
-        """Get current smart investigation status."""
+        """Get current enhanced smart investigation status v3.0."""
         if not self.investigation_mode:
-            return {"enabled": False, "status": "Smart Investigation mode disabled"}
+            return {"enabled": False, "status": "Enhanced Smart Investigation mode v3.0 disabled"}
         
         if not self.smart_investigation_logger:
-            return {"enabled": True, "status": "Smart Investigation logger not initialized", "error": True}
+            return {"enabled": True, "status": "Enhanced Smart Investigation logger v3.0 not initialized", "error": True}
             
         try:
             smart_status = self.smart_investigation_logger.get_smart_status()
             
             return {
                 "enabled": True,
+                "version": "3.0_enhanced",
                 "mode": smart_status.get('mode', 'unknown'),
                 "baseline_captured": smart_status.get('baseline_captured', False),
                 "session_id": smart_status.get('session_id'),
@@ -765,27 +772,30 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 "duplicates_skipped": smart_status.get('duplicates_skipped', 0),
                 "efficiency_percentage": smart_status.get('efficiency_percentage', 0),
                 "last_log_time": smart_status.get('last_log_time'),
-                "smart_features": [
-                    "🧠 Intelligent change detection",
-                    "🗑️ Automatic duplicate prevention", 
-                    "🧹 Auto-cleanup of old monitoring files",
-                    "📊 Efficiency tracking and reporting",
-                    "🎯 Focus on meaningful accessory changes"
+                "sensors_config_integration": smart_status.get('sensors_config_integration', False),
+                "enhanced_features_v3": [
+                    "✨ Self-contained analysis files with complete reference data",
+                    "🧠 Sensors.json config integration for Android app comparison",
+                    "🎯 Position 15 focus for Brush Guard confirmation testing",
+                    "🔍 Enhanced change detection with config validation",
+                    "📊 Complete audit trail with sensors configuration",
+                    "🗑️ Automatic duplicate prevention and file cleanup",
+                    "📈 80-90% efficiency with intelligent logging decisions"
                 ]
             }
             
         except Exception as e:
             return {
                 "enabled": True,
-                "status": f"Error getting smart status: {e}",
+                "status": f"Error getting enhanced smart status v3.0: {e}",
                 "error": True
             }
 
     async def async_shutdown(self):
-        """Shutdown the coordinator with smart investigation cleanup."""
+        """Shutdown the coordinator with enhanced smart investigation cleanup v3.0."""
         self._debug_log("🛑 Coordinator shutdown", "info", force=True)
         
-        # Smart investigation mode cleanup
+        # Enhanced smart investigation mode cleanup v3.0
         if self.investigation_mode and self.smart_investigation_logger:
             try:
                 summary_file = await self.smart_investigation_logger.generate_session_summary()
@@ -793,11 +803,11 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     filename = Path(summary_file).name
                     smart_status = self.smart_investigation_logger.get_smart_status()
                     efficiency = smart_status.get('efficiency_percentage', 0)
-                    self._debug_log(f"🧠 Smart Investigation session summary saved: {filename} (Efficiency: {efficiency:.1f}%)", "info", force=True)
+                    self._debug_log(f"✨ Enhanced Smart Investigation v3.0 session summary saved: {filename} (Efficiency: {efficiency:.1f}%)", "info", force=True)
                 else:
-                    self._debug_log("❌ Failed to create smart investigation summary", "error", force=True)
+                    self._debug_log("❌ Failed to create enhanced smart investigation summary v3.0", "error", force=True)
             except Exception as e:
-                self._debug_log(f"❌ Error creating smart investigation summary: {e}", "error", force=True)
+                self._debug_log(f"❌ Error creating enhanced smart investigation summary v3.0: {e}", "error", force=True)
         
         # Shutdown RestConnect client
         if self._rest_client:
@@ -824,4 +834,4 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             except Exception as e:
                 self._debug_log(f"❌ Error stopping debug logger: {e}", "error", force=True)
         
-        self._debug_log("🛑 Smart Investigation Coordinator shutdown completed", "info", force=True)
+        self._debug_log("🛑 Enhanced Smart Investigation Coordinator v3.0 shutdown completed", "info", force=True)
