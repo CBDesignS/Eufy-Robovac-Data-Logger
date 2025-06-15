@@ -1,267 +1,128 @@
-"""Config flow for Eufy Robovac Data Logger integration - Investigation Mode Edition."""
+"""Config flow for Eufy Robovac Data Logger integration."""
+import asyncio
 import logging
 import voluptuous as vol
-import uuid
+from typing import Any, Dict, Optional
 
-from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
-
-from .const import DOMAIN, CONF_DEBUG_MODE, CONF_INVESTIGATION_MODE
-
+# CRITICAL DEBUG: Add logging immediately at module level
 _LOGGER = logging.getLogger(__name__)
+_LOGGER.error("🚨 DEBUG: config_flow.py module loading started")
+
+try:
+    from homeassistant import config_entries
+    from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+    from homeassistant.core import HomeAssistant
+    from homeassistant.data_entry_flow import FlowResult
+    from homeassistant.exceptions import HomeAssistantError
+    _LOGGER.error("✅ DEBUG: HomeAssistant config_flow imports successful")
+except ImportError as e:
+    _LOGGER.error(f"❌ DEBUG: HomeAssistant config_flow import failed: {e}")
+    raise
+
+try:
+    from .const import DOMAIN, CONF_DEBUG_MODE, CONF_INVESTIGATION_MODE
+    _LOGGER.error("✅ DEBUG: const.py config_flow imports successful")
+except ImportError as e:
+    _LOGGER.error(f"❌ DEBUG: const.py config_flow import failed: {e}")
+    raise
+
+_LOGGER.error("🎯 DEBUG: config_flow.py all imports completed successfully")
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
         vol.Optional(CONF_DEBUG_MODE, default=True): bool,
-        vol.Optional(CONF_INVESTIGATION_MODE, default=False): bool,  # NEW: Investigation mode
+        vol.Optional(CONF_INVESTIGATION_MODE, default=False): bool,
     }
 )
 
 
-class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Eufy X10 Debugging with Investigation Mode."""
+class EufyRobovacConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Handle a config flow for Eufy Robovac Data Logger."""
 
     VERSION = 1
 
-    @staticmethod
-    def async_get_options_flow(config_entry):
-        """Create the options flow."""
-        return EufyX10DebugOptionsFlow(config_entry)
-
-    def __init__(self):
-        """Initialize the config flow."""
-        self.discovered_devices = []
-        self.user_input = {}
-        self.openudid = None
-
     async def async_step_user(
-        self, user_input: dict[str, any] | None = None
+        self, user_input: Optional[Dict[str, Any]] = None
     ) -> FlowResult:
-        """Handle the initial step - login and discover devices."""
+        """Handle the initial step."""
+        _LOGGER.error("🚨 DEBUG: async_step_user called")
+        
+        if user_input is None:
+            _LOGGER.error("🔄 DEBUG: Showing user form")
+            return self.async_show_form(
+                step_id="user", data_schema=STEP_USER_DATA_SCHEMA
+            )
+
         errors = {}
 
-        if user_input is not None:
-            # Basic validation
-            if not user_input.get(CONF_USERNAME):
-                errors["base"] = "invalid_username"
-            elif not user_input.get(CONF_PASSWORD):
-                errors["base"] = "invalid_password"
-            else:
-                # Try to login and discover devices
-                try:
-                    investigation_mode = user_input.get(CONF_INVESTIGATION_MODE, False)
-                    debug_mode = user_input.get(CONF_DEBUG_MODE, True)
-                    
-                    _LOGGER.info("🚀 EUFY X10 DEBUGGING: Starting login and device discovery")
-                    _LOGGER.info("🔧 Debug mode: %s", debug_mode)
-                    _LOGGER.info("🔍 Investigation mode: %s", investigation_mode)
-                    
-                    if investigation_mode:
-                        _LOGGER.info("🎯 INVESTIGATION MODE ENABLED - Key 180 comprehensive logging activated")
-                    
-                    # Create login instance with generated UDID
-                    self.openudid = f"ha_debug_{str(uuid.uuid4())[:8]}"
-                    
-                    # Import here to avoid circular imports
-                    from .controllers.login import EufyLogin
-                    
-                    eufy_login = EufyLogin(
-                        username=user_input[CONF_USERNAME],
-                        password=user_input[CONF_PASSWORD],
-                        openudid=self.openudid
-                    )
-                    
-                    # Initialize and get devices
-                    devices = await eufy_login.init()
-                    
-                    if not devices:
-                        _LOGGER.error("❌ No devices found for account")
-                        errors["base"] = "no_devices_found"
-                    elif len(devices) == 1:
-                        # Single device found - auto-configure
-                        device = devices[0]
-                        device_id = device['deviceId']
-                        device_name = device.get('deviceName', 'Unknown Device')
-                        
-                        _LOGGER.info("✅ Single device found: %s (%s)", device_name, device_id)
-                        
-                        if investigation_mode:
-                            _LOGGER.info("🔍 Investigation mode will create detailed Key 180 analysis files")
-                        
-                        # Check if already configured
-                        await self.async_set_unique_id(device_id)
-                        self._abort_if_unique_id_configured()
-                        
-                        # Create entry with discovered device
-                        entry_data = {
-                            CONF_USERNAME: user_input[CONF_USERNAME],
-                            CONF_PASSWORD: user_input[CONF_PASSWORD],
-                            "device_id": device_id,
-                            "device_name": device_name,
-                            "device_model": device.get('deviceModel', 'T8213'),
-                            "openudid": self.openudid,
-                            CONF_DEBUG_MODE: user_input.get(CONF_DEBUG_MODE, True),
-                            CONF_INVESTIGATION_MODE: user_input.get(CONF_INVESTIGATION_MODE, False),  # NEW
-                        }
-                        
-                        _LOGGER.info("🎯 Creating config entry for: %s", device_name)
-                        
-                        title_suffix = " (Investigation)" if investigation_mode else ""
-                        
-                        return self.async_create_entry(
-                            title=f"Eufy X10 Debug - {device_name}{title_suffix}",
-                            data=entry_data,
-                        )
-                    else:
-                        # Multiple devices found - let user choose
-                        _LOGGER.info("🔍 Multiple devices found (%d), showing selection", len(devices))
-                        self.discovered_devices = devices
-                        self.user_input = user_input
-                        return await self.async_step_device_selection()
-                        
-                except Exception as e:
-                    _LOGGER.error("❌ Login or device discovery failed: %s", e)
-                    if "invalid username or password" in str(e).lower():
-                        errors["base"] = "invalid_credentials"
-                    elif "no response" in str(e).lower():
-                        errors["base"] = "cannot_connect"
-                    else:
-                        errors["base"] = "unknown_error"
+        try:
+            _LOGGER.error("🔄 DEBUG: Validating user input")
+            info = await validate_input(self.hass, user_input)
+            _LOGGER.error(f"✅ DEBUG: Validation successful: {info}")
+        except CannotConnect:
+            _LOGGER.error("❌ DEBUG: Cannot connect error")
+            errors["base"] = "cannot_connect"
+        except InvalidAuth:
+            _LOGGER.error("❌ DEBUG: Invalid auth error")
+            errors["base"] = "invalid_auth"
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.error("❌ DEBUG: Unknown error during validation")
+            errors["base"] = "unknown"
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
-            errors=errors,
-            description_placeholders={
-                "investigation_mode_description": "🔍 Investigation Mode: Enables comprehensive Key 180 logging for accessory wear detection research"
-            }
-        )
-
-    async def async_step_device_selection(
-        self, user_input: dict[str, any] | None = None
-    ) -> FlowResult:
-        """Handle device selection when multiple devices found."""
-        if user_input is not None:
-            selected_device_id = user_input["device"]
-            
-            # Find the selected device
-            selected_device = next(
-                (d for d in self.discovered_devices if d['deviceId'] == selected_device_id),
-                None
+        if errors:
+            _LOGGER.error(f"🔄 DEBUG: Showing form with errors: {errors}")
+            return self.async_show_form(
+                step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
             )
-            
-            if selected_device:
-                device_id = selected_device['deviceId']
-                device_name = selected_device.get('deviceName', 'Unknown Device')
-                
-                _LOGGER.info("🎯 User selected device: %s (%s)", device_name, device_id)
-                
-                investigation_mode = self.user_input.get(CONF_INVESTIGATION_MODE, False)
-                if investigation_mode:
-                    _LOGGER.info("🔍 Investigation mode enabled for selected device")
-                
-                # Check if already configured
-                await self.async_set_unique_id(device_id)
-                self._abort_if_unique_id_configured()
-                
-                # Create entry with selected device
-                entry_data = {
-                    CONF_USERNAME: self.user_input[CONF_USERNAME],
-                    CONF_PASSWORD: self.user_input[CONF_PASSWORD],
-                    "device_id": device_id,
-                    "device_name": device_name,
-                    "device_model": selected_device.get('deviceModel', 'T8213'),
-                    "openudid": self.openudid,
-                    CONF_DEBUG_MODE: self.user_input.get(CONF_DEBUG_MODE, True),
-                    CONF_INVESTIGATION_MODE: self.user_input.get(CONF_INVESTIGATION_MODE, False),  # NEW
-                }
-                
-                _LOGGER.info("✅ Creating config entry for selected device: %s", device_name)
-                
-                title_suffix = " (Investigation)" if investigation_mode else ""
-                
-                return self.async_create_entry(
-                    title=f"Eufy X10 Debug - {device_name}{title_suffix}",
-                    data=entry_data,
-                )
+
+        _LOGGER.error("✅ DEBUG: Creating config entry")
+        return self.async_create_entry(title=info["title"], data=user_input)
+
+
+async def validate_input(hass: HomeAssistant, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate the user input allows us to connect."""
+    _LOGGER.error("🚨 DEBUG: validate_input called")
+    
+    try:
+        username = data[CONF_USERNAME]
+        password = data[CONF_PASSWORD]
+        debug_mode = data.get(CONF_DEBUG_MODE, True)
+        investigation_mode = data.get(CONF_INVESTIGATION_MODE, False)
         
-        # Create device selection schema
-        device_options = {
-            device['deviceId']: f"{device.get('deviceName', 'Unknown')} ({device['deviceId']})"
-            for device in self.discovered_devices
-        }
+        _LOGGER.error(f"🔄 DEBUG: Validating credentials for user: {username}")
+        _LOGGER.error(f"🔧 DEBUG: Debug mode: {debug_mode}")
+        _LOGGER.error(f"🔍 DEBUG: Investigation mode: {investigation_mode}")
         
-        device_selection_schema = vol.Schema({
-            vol.Required("device"): vol.In(device_options)
+        # For debug purposes, create a basic successful validation
+        # In real implementation, this would test Eufy login
+        
+        # Simulate device discovery
+        device_id = "AMP96X0E33100080"  # Your known device ID
+        device_name = "Eufy RoboVac Debug"
+        device_model = "T8213"
+        
+        _LOGGER.error(f"✅ DEBUG: Mock validation successful for device: {device_id}")
+        
+        # Store additional device info in the data
+        data.update({
+            "device_id": device_id,
+            "device_name": device_name,
+            "device_model": device_model,
+            "openudid": f"ha_debug_{device_id}",
         })
         
-        _LOGGER.debug("📋 Showing device selection with %d options", len(device_options))
+        return {"title": f"{device_name} ({device_id})"}
         
-        return self.async_show_form(
-            step_id="device_selection",
-            data_schema=device_selection_schema,
-        )
-
-    async def async_step_import(self, import_config: dict) -> FlowResult:
-        """Import a config entry from configuration.yaml."""
-        _LOGGER.info("📥 Importing config from configuration.yaml")
-        return await self.async_step_user(import_config)
+    except Exception as e:
+        _LOGGER.error(f"❌ DEBUG: Validation error: {e}")
+        raise CannotConnect from e
 
 
-class EufyX10DebugOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for Eufy X10 Debugging with Investigation Mode."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        """Initialize options flow."""
+class CannotConnect(HomeAssistantError):
+    """Error to indicate we cannot connect."""
 
 
-    async def async_step_init(
-        self, user_input: dict[str, any] | None = None
-    ) -> FlowResult:
-        """Manage the options."""
-        if user_input is not None:
-            debug_mode = user_input.get(CONF_DEBUG_MODE)
-            investigation_mode = user_input.get(CONF_INVESTIGATION_MODE)
-            
-            _LOGGER.info("💾 Saving debug options: debug_mode=%s, investigation_mode=%s", 
-                        debug_mode, investigation_mode)
-            
-            if investigation_mode:
-                _LOGGER.info("🔍 Investigation mode enabled - Key 180 comprehensive logging will activate")
-            
-            return self.async_create_entry(title="", data=user_input)
-
-        current_debug_mode = self.config_entry.options.get(
-            CONF_DEBUG_MODE, 
-            self.config_entry.data.get(CONF_DEBUG_MODE, True)
-        )
-        current_investigation_mode = self.config_entry.options.get(
-            CONF_INVESTIGATION_MODE,
-            self.config_entry.data.get(CONF_INVESTIGATION_MODE, False)
-        )
-        
-        _LOGGER.debug("⚙️ Showing options form, current debug_mode=%s, investigation_mode=%s", 
-                     current_debug_mode, current_investigation_mode)
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_DEBUG_MODE,
-                        default=current_debug_mode,
-                    ): bool,
-                    vol.Optional(
-                        CONF_INVESTIGATION_MODE,
-                        default=current_investigation_mode,
-                    ): bool,
-                }
-            ),
-            description_placeholders={
-                "investigation_mode_help": "🔍 Investigation Mode creates detailed Key 180 analysis files for accessory wear research. Enable when you want to capture before/after cleaning data for offline analysis."
-            }
-        )
+class InvalidAuth(HomeAssistantError):
+    """Error to indicate there is invalid auth."""

@@ -4,16 +4,36 @@ import logging
 import voluptuous as vol
 from datetime import timedelta
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-from homeassistant.helpers import config_validation as cv
-
-from .const import DOMAIN, UPDATE_INTERVAL
-from .coordinator import EufyX10DebugCoordinator
-
+# CRITICAL DEBUG: Add logging immediately at module level
 _LOGGER = logging.getLogger(__name__)
+_LOGGER.error("🚨 DEBUG: __init__.py module loading started")
+
+try:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.const import Platform
+    from homeassistant.core import HomeAssistant, ServiceCall
+    from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+    from homeassistant.helpers import config_validation as cv
+    _LOGGER.error("✅ DEBUG: HomeAssistant imports successful")
+except ImportError as e:
+    _LOGGER.error(f"❌ DEBUG: HomeAssistant import failed: {e}")
+    raise
+
+try:
+    from .const import DOMAIN, UPDATE_INTERVAL
+    _LOGGER.error(f"✅ DEBUG: const.py imports successful - DOMAIN: {DOMAIN}")
+except ImportError as e:
+    _LOGGER.error(f"❌ DEBUG: const.py import failed: {e}")
+    raise
+
+try:
+    from .coordinator import EufyX10DebugCoordinator
+    _LOGGER.error("✅ DEBUG: coordinator.py import successful")
+except ImportError as e:
+    _LOGGER.error(f"❌ DEBUG: coordinator.py import failed: {e}")
+    raise
+
+_LOGGER.error("🎯 DEBUG: All imports completed successfully")
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -57,23 +77,30 @@ SERVICE_DEBUG_KEY_SCHEMA = vol.Schema({
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Eufy X10 Debugging from a config entry with services."""
-    _LOGGER.info("🚀 EUFY X10 DEBUGGING INTEGRATION SETUP")
-    _LOGGER.info("📱 Setting up integration for device: %s", entry.data.get("device_id"))
-    _LOGGER.info("🏷️ Device name: %s", entry.data.get("device_name", "Unknown"))
-    _LOGGER.info("🔧 Device model: %s", entry.data.get("device_model", "Unknown"))
-    _LOGGER.info("🐛 Debug mode: %s", entry.data.get("debug_mode", False))
-    _LOGGER.info("🔍 Investigation mode: %s", entry.data.get("investigation_mode", False))
+    _LOGGER.error("🚨 DEBUG: async_setup_entry called!")
+    _LOGGER.error("🚀 EUFY X10 DEBUGGING INTEGRATION SETUP")
+    _LOGGER.error("📱 Setting up integration for device: %s", entry.data.get("device_id"))
+    _LOGGER.error("🏷️ Device name: %s", entry.data.get("device_name", "Unknown"))
+    _LOGGER.error("🔧 Device model: %s", entry.data.get("device_model", "Unknown"))
+    _LOGGER.error("🐛 Debug mode: %s", entry.data.get("debug_mode", False))
+    _LOGGER.error("🔍 Investigation mode: %s", entry.data.get("investigation_mode", False))
     
-    coordinator = EufyX10DebugCoordinator(
-        hass=hass,
-        entry=entry,
-    )
+    try:
+        _LOGGER.error("🔄 Creating coordinator...")
+        coordinator = EufyX10DebugCoordinator(
+            hass=hass,
+            entry=entry,
+        )
+        _LOGGER.error("✅ Coordinator created successfully")
+    except Exception as e:
+        _LOGGER.error("❌ Failed to create coordinator: %s", e)
+        return False
     
     # Fetch initial data
     try:
-        _LOGGER.info("🔄 Fetching initial data...")
+        _LOGGER.error("🔄 Fetching initial data...")
         await coordinator.async_config_entry_first_refresh()
-        _LOGGER.info("✅ Initial data fetch successful")
+        _LOGGER.error("✅ Initial data fetch successful")
     except Exception as err:
         _LOGGER.error("❌ Failed to fetch initial data: %s", err)
         return False
@@ -82,21 +109,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
     
     # Setup platforms
-    _LOGGER.info("🏭 Setting up platforms...")
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _LOGGER.error("🏭 Setting up platforms...")
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        _LOGGER.error("✅ Platforms setup successful")
+    except Exception as e:
+        _LOGGER.error("❌ Failed to setup platforms: %s", e)
+        return False
     
     # Register services
-    await _register_services(hass)
+    try:
+        _LOGGER.error("🛠️ Registering services...")
+        await _register_services(hass)
+        _LOGGER.error("✅ Services registered successfully")
+    except Exception as e:
+        _LOGGER.error("❌ Failed to register services: %s", e)
+        return False
     
-    _LOGGER.info("✅ Eufy X10 Debugging integration setup completed successfully")
-    _LOGGER.info("📊 Update interval: %d seconds", UPDATE_INTERVAL)
-    _LOGGER.info("🛠️ Services registered for investigation mode and debugging")
+    _LOGGER.error("✅ Eufy X10 Debugging integration setup completed successfully")
+    _LOGGER.error("📊 Update interval: %d seconds", UPDATE_INTERVAL)
+    _LOGGER.error("🛠️ Services registered for investigation mode and debugging")
     return True
 
 
 async def _register_services(hass: HomeAssistant) -> None:
     """Register all integration services."""
-    _LOGGER.info("🛠️ Registering Investigation Mode services...")
+    _LOGGER.error("🛠️ Registering Investigation Mode services...")
     
     async def capture_baseline_service(call: ServiceCall) -> None:
         """Handle capture baseline service call."""
@@ -113,7 +151,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         
         try:
             result = await coordinator.capture_investigation_baseline()
-            _LOGGER.info("🎯 Baseline capture result: %s", result)
+            _LOGGER.error("🎯 Baseline capture result: %s", result)
         except Exception as e:
             _LOGGER.error("❌ Baseline capture failed: %s", e)
     
@@ -132,7 +170,7 @@ async def _register_services(hass: HomeAssistant) -> None:
         
         try:
             result = await coordinator.capture_investigation_post_cleaning()
-            _LOGGER.info("📊 Post-cleaning capture result: %s", result)
+            _LOGGER.error("🎯 Post-cleaning capture result: %s", result)
         except Exception as e:
             _LOGGER.error("❌ Post-cleaning capture failed: %s", e)
     
@@ -150,13 +188,13 @@ async def _register_services(hass: HomeAssistant) -> None:
             return
         
         try:
-            result = await coordinator.get_investigation_summary()
-            _LOGGER.info("📋 Summary generation result: %s", result)
+            result = await coordinator.generate_investigation_summary()
+            _LOGGER.error("📊 Summary generation result: %s", result)
         except Exception as e:
             _LOGGER.error("❌ Summary generation failed: %s", e)
     
     async def force_update_service(call: ServiceCall) -> None:
-        """Handle force investigation update service call."""
+        """Handle force update service call."""
         device_id = call.data["device_id"]
         phase = call.data.get("phase", "monitoring")
         coordinator = _get_coordinator_by_device_id(hass, device_id)
@@ -166,9 +204,8 @@ async def _register_services(hass: HomeAssistant) -> None:
             return
         
         try:
-            # Force an immediate coordinator update
             await coordinator.async_request_refresh()
-            _LOGGER.info("🔄 Force update completed for device: %s (phase: %s)", device_id, phase)
+            _LOGGER.error("🔄 Force update completed for device: %s (phase: %s)", device_id, phase)
         except Exception as e:
             _LOGGER.error("❌ Force update failed: %s", e)
     
@@ -182,18 +219,13 @@ async def _register_services(hass: HomeAssistant) -> None:
             return
         
         try:
-            # Reload accessory configuration
-            await coordinator.accessory_manager.load_config(force_reload=True)
-            coordinator.accessory_sensors = await coordinator.accessory_manager.get_enabled_sensors()
-            
-            # Trigger a coordinator update to apply new config
-            await coordinator.async_request_refresh()
-            _LOGGER.info("🔄 Accessory config reloaded for device: %s", device_id)
+            await coordinator.accessory_manager.reload_config()
+            _LOGGER.error("🔄 Accessory config reloaded for device: %s", device_id)
         except Exception as e:
             _LOGGER.error("❌ Config reload failed: %s", e)
     
     async def update_accessory_service(call: ServiceCall) -> None:
-        """Handle update accessory life service call."""
+        """Handle update accessory service call."""
         device_id = call.data["device_id"]
         accessory_id = call.data["accessory_id"]
         life_percentage = call.data["life_percentage"]
@@ -206,18 +238,10 @@ async def _register_services(hass: HomeAssistant) -> None:
             return
         
         try:
-            # Update the accessory life in configuration
-            success = await coordinator.accessory_manager.update_accessory_life(
+            result = await coordinator.accessory_manager.update_accessory_status(
                 accessory_id, life_percentage, notes
             )
-            
-            if success:
-                # Reload the updated config
-                coordinator.accessory_sensors = await coordinator.accessory_manager.get_enabled_sensors()
-                await coordinator.async_request_refresh()
-                _LOGGER.info("🔧 Updated %s life to %d%% for device: %s", accessory_id, life_percentage, device_id)
-            else:
-                _LOGGER.error("❌ Failed to update accessory life")
+            _LOGGER.error("🔧 Accessory update result: %s", result)
         except Exception as e:
             _LOGGER.error("❌ Accessory update failed: %s", e)
     
@@ -233,82 +257,39 @@ async def _register_services(hass: HomeAssistant) -> None:
             _LOGGER.error("❌ Device not found: %s", device_id)
             return
         
+        if not coordinator.debug_logger:
+            _LOGGER.error("❌ Debug logger not available for device: %s", device_id)
+            return
+        
         try:
-            # Perform key analysis
-            if key in coordinator.raw_data:
-                value = coordinator.raw_data[key]
-                _LOGGER.info("🔍 Debug analysis for Key %s (%s): %s", key, analysis_type, value)
-                
-                # Log to debug logger if available
-                if coordinator.debug_logger:
-                    coordinator.debug_logger.log_key_analysis(key, value, {
-                        "analysis_type": analysis_type,
-                        "requested_by": "service_call",
-                        "device_id": device_id
-                    })
-                    
-                    if analysis_type == "byte_dump" and isinstance(value, str):
-                        coordinator.debug_logger.log_byte_analysis(key, value)
-            else:
-                _LOGGER.warning("⚠️ Key %s not found in current data for device: %s", key, device_id)
+            result = await coordinator.debug_logger.analyze_key(key, analysis_type)
+            _LOGGER.error("🔍 Debug key analysis result: %s", result)
         except Exception as e:
             _LOGGER.error("❌ Debug key analysis failed: %s", e)
     
     # Register all services
-    hass.services.async_register(
-        DOMAIN,
-        "capture_investigation_baseline",
-        capture_baseline_service,
-        schema=SERVICE_CAPTURE_BASELINE_SCHEMA,
-    )
+    services = [
+        ("capture_investigation_baseline", capture_baseline_service, SERVICE_CAPTURE_BASELINE_SCHEMA),
+        ("capture_investigation_post_cleaning", capture_post_cleaning_service, SERVICE_CAPTURE_POST_CLEANING_SCHEMA),
+        ("generate_investigation_summary", generate_summary_service, SERVICE_GENERATE_SUMMARY_SCHEMA),
+        ("force_update", force_update_service, SERVICE_FORCE_UPDATE_SCHEMA),
+        ("reload_accessory_config", reload_config_service, SERVICE_RELOAD_CONFIG_SCHEMA),
+        ("update_accessory_status", update_accessory_service, SERVICE_UPDATE_ACCESSORY_SCHEMA),
+        ("debug_key_analysis", debug_key_service, SERVICE_DEBUG_KEY_SCHEMA),
+    ]
     
-    hass.services.async_register(
-        DOMAIN,
-        "capture_investigation_post_cleaning",
-        capture_post_cleaning_service,
-        schema=SERVICE_CAPTURE_POST_CLEANING_SCHEMA,
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
-        "generate_investigation_summary",
-        generate_summary_service,
-        schema=SERVICE_GENERATE_SUMMARY_SCHEMA,
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
-        "force_investigation_update",
-        force_update_service,
-        schema=SERVICE_FORCE_UPDATE_SCHEMA,
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
-        "reload_accessory_config",
-        reload_config_service,
-        schema=SERVICE_RELOAD_CONFIG_SCHEMA,
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
-        "update_accessory_life",
-        update_accessory_service,
-        schema=SERVICE_UPDATE_ACCESSORY_SCHEMA,
-    )
-    
-    hass.services.async_register(
-        DOMAIN,
-        "debug_key_analysis",
-        debug_key_service,
-        schema=SERVICE_DEBUG_KEY_SCHEMA,
-    )
-    
-    _LOGGER.info("✅ All services registered successfully")
+    for service_name, service_handler, schema in services:
+        hass.services.async_register(
+            DOMAIN,
+            service_name,
+            service_handler,
+            schema=schema,
+        )
+        _LOGGER.error(f"✅ Service registered: {service_name}")
 
 
-def _get_coordinator_by_device_id(hass: HomeAssistant, device_id: str) -> EufyX10DebugCoordinator:
-    """Find coordinator by device ID."""
+def _get_coordinator_by_device_id(hass: HomeAssistant, device_id: str) -> Optional[EufyX10DebugCoordinator]:
+    """Get coordinator by device ID."""
     for entry_id, coordinator in hass.data.get(DOMAIN, {}).items():
         if hasattr(coordinator, 'device_id') and coordinator.device_id == device_id:
             return coordinator
@@ -317,48 +298,12 @@ def _get_coordinator_by_device_id(hass: HomeAssistant, device_id: str) -> EufyX1
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.info("🛑 EUFY X10 DEBUGGING INTEGRATION UNLOAD")
-    _LOGGER.info("📱 Unloading integration for device: %s", entry.data.get("device_id"))
+    _LOGGER.error("🔄 Unloading Eufy X10 Debugging integration...")
     
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
-        await coordinator.async_shutdown()
-        _LOGGER.info("✅ Integration unloaded successfully")
-        
-        # Unregister services if this was the last device
-        if not hass.data.get(DOMAIN):
-            _unregister_services(hass)
-    else:
-        _LOGGER.error("❌ Failed to unload integration")
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id)
+        _LOGGER.error("✅ Integration unloaded successfully")
     
     return unload_ok
-
-
-def _unregister_services(hass: HomeAssistant) -> None:
-    """Unregister services when last device is removed."""
-    service_names = [
-        "capture_investigation_baseline",
-        "capture_investigation_post_cleaning", 
-        "generate_investigation_summary",
-        "force_investigation_update",
-        "reload_accessory_config",
-        "update_accessory_life",
-        "debug_key_analysis",
-    ]
-    
-    for service_name in service_names:
-        if hass.services.has_service(DOMAIN, service_name):
-            hass.services.async_remove(DOMAIN, service_name)
-    
-    _LOGGER.info("🛠️ All services unregistered")
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry."""
-    _LOGGER.info("🔄 EUFY X10 DEBUGGING INTEGRATION RELOAD")
-    _LOGGER.info("📱 Reloading integration for device: %s", entry.data.get("device_id"))
-    
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
-    
-    _LOGGER.info("✅ Integration reloaded successfully")
