@@ -89,7 +89,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.debug_logger = None
         if self.debug_mode:
             try:
-                from .async_debug_logger import AsyncDebugLogger
+                from .async_debug_logger import AsyncEufyDebugLogger
                 self.debug_logger = AsyncDebugLogger(
                     device_id=self.device_id,
                     hass_config_dir=hass.config.config_dir
