@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import voluptuous as vol
+from typing import Optional
 from datetime import timedelta
 
 # CRITICAL DEBUG: Add logging immediately at module level
