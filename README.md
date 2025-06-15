@@ -9,24 +9,21 @@ A Home Assistant custom component for comprehensive Eufy Robovac API debugging w
 
 This integration is specifically designed for **debugging and research** of Eufy robovac API data, with advanced features for discovering accessory sensor byte positions:
 
-### 🔍 Enhanced Smart Investigation Mode v3.0
-- **Complete Key 180 Analysis**: Byte-by-byte payload examination with sensors config integration
+### 🔍 Enhanced Smart Investigation Mode v4.0
+- **Complete Key Data Analysis**: Byte-by-byte payload examination with sensors config integration
 - **Self-Contained Files**: Every analysis file includes complete Android app reference data
 - **Smart Change Detection**: Only logs meaningful changes, reducing file bloat by 80-90%
 - **Position Discovery**: Automated analysis to find correct accessory sensor byte positions
 - **Before/After Cleaning**: Capture baseline and post-cleaning data for wear detection
 
 ### 🌐 RestConnect Technology
-- **Advanced REST API Client**: Access to multiple Eufy API endpoints
-- **Smart Fallback**: Automatic fallback to basic login if REST endpoints fail
-- **Enhanced Data Collection**: Combines traditional DPS data with REST endpoint data
-- **Multiple Data Sources**: Device, accessory, consumable, and runtime APIs
+- **these have been removed for the momemt as the endpoint servers are either not online or when they are there is no data being transmitted. (Eufy must still be testing the backend servers)
 
 ### 📊 Proven Data Sources
 - **Key 163**: Battery level (100% accuracy from NEW Android app)
-- **Key 167**: Water tank level with enhanced byte analysis
+- **Key 167**: possible Water tank level with enhanced byte analysis
 - **Key 180**: Complete accessory wear data with smart investigation
-- **Keys 181-190**: Enhanced data from RestConnect endpoints
+- **Keys 181-190**: Enhanced data from RestConnect endpoints (again who knows whats in here at the moment, it could be dps data or rest data. only logging and investigation will enlighten us)
 
 ## 🚀 Quick Start
 
@@ -41,15 +38,15 @@ Setup instructions, Investigation Mode, and sensors configuration
 ### ✅ Confirmed Findings
 Through Enhanced Smart Investigation Mode v3.0, we've achieved:
 
-- **Position 15 = Brush Guard (97%)**: Exact match confirmed through investigation files
-- **Self-Contained Analysis**: Complete Android app percentages included in every log file
+- **Position 15 = Brush Guard (97%)**: Exact match confirmed through investigation files but still needs further testing to be completed.
+- **Self-Contained Analysis**: Complete Android app percentages included in every log file. (You must update /accessorys/sensors.json with your real world accessory usage data from the mobile app)
 - **Smart Efficiency**: 80-90% reduction in duplicate files while capturing all meaningful changes
-- **Template System**: Clean sensors.json inheritance with real Android app data
+- **Template System**: Clean sensors.json inheritance with real Android app data but you must have, and keep the file updated with your real world accessory wear data
 
 ### 🎯 Current Investigation Status
 ```json
 {
-  "investigation_mode": "Enhanced Smart v3.0",
+  "investigation_mode": "Enhanced Smart v4.0",
   "baseline_captured": true,
   "position_15_analysis": "97% = Brush Guard (EXACT MATCH)",
   "next_step": "Run cleaning cycle to verify Position 15 decreases",
@@ -66,7 +63,7 @@ All files are saved to: `/config/eufy_investigation/DEVICE_ID/`
 ## 🧠 Smart Features
 
 ### Enhanced Investigation Workflow
-1. **Baseline Capture**: Record Key 180 data before cleaning with complete sensors reference
+1. **Baseline Capture**: Record All Key data before cleaning with complete sensors reference
 2. **Cleaning Cycle**: Run 5-10 minute cleaning cycle
 3. **Post-Cleaning Analysis**: Capture data after docking with change detection
 4. **Byte Position Discovery**: Automated analysis finds correct accessory positions
@@ -82,6 +79,8 @@ Every investigation file now includes:
 
 ## 📊 Current Sensors & Accuracy
 
+ Example of a real world test setup and logging..
+ 
 | Sensor | Android App | Investigation Status | Accuracy |
 |--------|-------------|---------------------|----------|
 | Battery (Key 163) | N/A | ✅ Confirmed | 100% |
@@ -121,7 +120,7 @@ eufy_robovac_data_logger.debug_key_analysis
 
 ## 🏆 Key Achievements
 
-### Enhanced Smart Investigation v3.0
+### Enhanced Smart Investigation v4.0
 - **Template Inheritance**: Perfect sensors.json → sensors_DEVICEID.json system
 - **Position Discovery**: Automated Android app percentage matching
 - **Smart Logging**: Only meaningful changes logged with complete reference data
