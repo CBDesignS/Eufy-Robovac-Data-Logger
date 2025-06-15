@@ -33,6 +33,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         
         # UPDATED: Enhanced Smart Investigation Mode v4.0 - Multi-Key Support
         self.investigation_mode = entry.data.get("investigation_mode", False)
+)
         
         # Store raw data for debugging
         self.raw_data: Dict[str, Any] = {}
