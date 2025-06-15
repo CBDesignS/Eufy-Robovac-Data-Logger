@@ -32,7 +32,9 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.debug_mode = entry.data.get("debug_mode", True)
         
         # UPDATED: Enhanced Smart Investigation Mode v4.0 - Multi-Key Support
-        self.investigation_mode = entry.data.get("investigation_mode", False)
+        self.investigation_mode = entry.options.get(
+            CONF_INVESTIGATION_MODE,
+            entry.data.get(CONF_INVESTIGATION_MODE, False)
 )
         
         # Store raw data for debugging
