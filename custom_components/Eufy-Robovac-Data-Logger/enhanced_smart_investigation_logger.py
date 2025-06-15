@@ -1,169 +1,140 @@
-"""
-Enhanced Smart Investigation Logger for Multi-Key Accessory Wear Detection
-VERSION 4.0: Expanded from Key 180 only to ALL monitored keys with same analysis infrastructure.
-Each key gets the same detailed logging, analysis, and tracking as Key 180.
-GOAL: Find where water tank, battery, and accessory data moved in Eufy API updates.
-"""
-
+"""Enhanced Smart Investigation Logger v4.0 for multi-key Eufy robovac data analysis."""
+import json
+import hashlib
 import asyncio
 import aiofiles
-import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+from enum import Enum
 import logging
 import base64
-import hashlib
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
-from enum import Enum
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class LoggingMode(str, Enum):
-    """Investigation logging modes."""
+class LoggingMode(Enum):
+    """Logging modes for enhanced smart investigation."""
     BASELINE = "baseline"
     SMART_MONITORING = "smart_monitoring"
-    CLEANING_DETECTED = "cleaning_detected"
     POST_CLEANING = "post_cleaning"
-    MANUAL_TRIGGER = "manual_trigger"
+    SESSION_SUMMARY = "session_summary"
 
 
 class EnhancedSmartMultiKeyInvestigationLogger:
-    """
-    Enhanced Smart Investigation Logger with multi-key support.
-    Replicates Key 180 analysis infrastructure for ALL monitored keys.
-    Creates self-contained analysis files with complete reference data for each key.
-    Reduces file bloat by only logging meaningful changes across all keys.
-    """
-    
-    def __init__(self, device_id: str, hass_config_dir: str, integration_dir: Optional[str] = None, monitored_keys: Optional[List[str]] = None):
+    """Enhanced Smart Investigation Logger v4.0 with multi-key support and smart efficiency."""
+
+    def __init__(self, device_id: str, hass_config_dir: str, integration_dir: str, monitored_keys: List[str]):
+        """Initialize the enhanced smart multi-key investigation logger."""
         self.device_id = device_id
-        self.hass_config_dir = hass_config_dir
+        self.hass_config_dir = Path(hass_config_dir)
+        self.integration_dir = Path(integration_dir)
+        self.monitored_keys = monitored_keys
         
-        # Multi-key support - default to comprehensive key list
-        self.monitored_keys = monitored_keys or [
-            "152", "153", "154", "157", "158", "161", "162", "163", "164", "165",
-            "166", "167", "168", "169", "170", "172", "173", "176", "177", "178", 
-            "179", "180"
-        ]
-        
-        # Create investigation directory
-        self.investigation_dir = Path(hass_config_dir) / "eufy_investigation" / device_id
+        # Investigation directory setup
+        self.investigation_dir = self.hass_config_dir / "eufy_investigation" / self.device_id
         self.investigation_dir.mkdir(parents=True, exist_ok=True)
         
-        # Integration directory for accessing sensors.json
-        if integration_dir:
-            self.integration_dir = Path(integration_dir)
-            self.sensors_config_file = self.integration_dir / "accessories" / "sensors.json"
-            self.device_config_file = self.integration_dir / "accessories" / f"sensors_{device_id}.json"
-        else:
-            self.integration_dir = None
-            self.sensors_config_file = None
-            self.device_config_file = None
-        
-        # Session tracking
+        # Session management
         self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Smart logging state - now tracks ALL keys
-        self.current_mode = LoggingMode.BASELINE
+        # Smart logging state tracking
         self.baseline_captured = False
-        self.last_multi_key_hash = None
-        self.last_logged_data = {}  # Store last data for each key
-        self.last_log_time = None
-        
-        # Change detection settings
-        self.min_log_interval_seconds = 30  # Don't log more than once per 30 seconds
-        self.significant_change_threshold = 3  # Changes of 1-3 bytes are significant
-        self.accessory_value_range = (1, 100)  # Valid accessory percentage range
-        
-        # File management
-        self.max_monitoring_files = 10  # Keep max 10 monitoring files
-        self.auto_cleanup_enabled = True
-        
-        # Statistics
+        self.current_mode = LoggingMode.SMART_MONITORING
         self.total_updates_received = 0
         self.meaningful_logs_created = 0
         self.duplicates_skipped = 0
         
-        # Multi-key tracking
-        self.key_change_counts = {key: 0 for key in self.monitored_keys}
-        self.key_last_values = {key: None for key in self.monitored_keys}
+        # Multi-key change tracking
+        self.last_multi_key_hash = None
+        self.last_logged_data = {}
+        self.last_log_time = None
+        self.key_last_values = {}  # Track last value for each key
+        self.key_change_counts = {key: 0 for key in self.monitored_keys}  # Track changes per key
         
-        # Sensors config cache
-        self._sensors_config_cache = None
-        self._device_config_cache = None
-        self._config_load_time = None
+        # Smart logging configuration
+        self.min_log_interval_seconds = 30  # Don't log more frequently than every 30 seconds
+        self.significant_change_threshold = 2  # Minimum change to be considered significant
+        self.accessory_value_range = (0, 100)  # Expected range for accessory percentages
+        
+        # File management
+        self.max_monitoring_files = 10  # Keep last 10 monitoring files per session
         
         _LOGGER.info("🔍 Enhanced Smart Multi-Key Investigation Logger v4.0 initialized")
-        _LOGGER.info("📂 Investigation directory: %s", self.investigation_dir)
-        _LOGGER.info("🗂️ Monitoring %d keys: %s", len(self.monitored_keys), ", ".join(self.monitored_keys))
-        _LOGGER.info("🔧 Sensors config: %s", self.sensors_config_file if self.sensors_config_file else "Not available")
-        _LOGGER.info("🧠 Mode: %s", self.current_mode.value)
-        _LOGGER.info("✨ NEW: Multi-key analysis with same infrastructure as Key 180")
-    
-    async def _load_sensors_config(self) -> Dict[str, Any]:
-        """Load sensors.json configuration for reference data."""
+        _LOGGER.info(f"📁 Investigation directory: {self.investigation_dir}")
+        _LOGGER.info(f"🗂️ Monitoring {len(self.monitored_keys)} keys: {', '.join(self.monitored_keys)}")
+        _LOGGER.info(f"🔬 Session ID: {self.session_id}")
+
+    async def initialize(self) -> None:
+        """Initialize the investigation logger - FIXED: Added missing method."""
         try:
-            # Check cache first (5 minute cache)
-            current_time = datetime.now()
-            if (self._sensors_config_cache and self._config_load_time and 
-                (current_time - self._config_load_time).total_seconds() < 300):
-                return self._sensors_config_cache
+            # Ensure investigation directory exists
+            self.investigation_dir.mkdir(parents=True, exist_ok=True)
             
-            if not self.sensors_config_file or not self.sensors_config_file.exists():
-                _LOGGER.warning("⚠️ Sensors config file not found: %s", self.sensors_config_file)
-                return {}
+            # Load any existing session state
+            await self._load_session_state()
             
-            async with aiofiles.open(self.sensors_config_file, 'r', encoding='utf-8') as f:
-                content = await f.read()
-                self._sensors_config_cache = json.loads(content)
-                self._config_load_time = current_time
-                _LOGGER.debug("📋 Loaded sensors config with %d accessories", 
-                             len(self._sensors_config_cache.get('accessories', {})))
-                return self._sensors_config_cache
-        
+            # Initialize sensors config
+            await self._load_sensors_config()
+            
+            _LOGGER.info("✅ Enhanced Smart Multi-Key Investigation Logger v4.0 initialized successfully")
+            _LOGGER.info(f"📂 Investigation directory ready: {self.investigation_dir}")
+            _LOGGER.info(f"🔬 Session ID: {self.session_id}")
+            _LOGGER.info(f"🗂️ Monitoring keys: {', '.join(self.monitored_keys)}")
+            
         except Exception as e:
-            _LOGGER.warning("⚠️ Failed to load sensors config: %s", e)
-            return {}
-    
+            _LOGGER.error(f"❌ Failed to initialize investigation logger: {e}")
+            raise
+
+    async def _load_session_state(self) -> None:
+        """Load existing session state if available."""
+        try:
+            # Check for existing baseline files
+            baseline_files = list(self.investigation_dir.glob("multi_key_baseline_*.json"))
+            if baseline_files:
+                self.baseline_captured = True
+                self.current_mode = LoggingMode.SMART_MONITORING
+                _LOGGER.info(f"📁 Found {len(baseline_files)} existing baseline files")
+            
+            # Check for existing monitoring files
+            monitoring_files = list(self.investigation_dir.glob("multi_key_monitoring_*.json"))
+            if monitoring_files:
+                self.meaningful_logs_created = len(monitoring_files)
+                _LOGGER.info(f"📊 Found {len(monitoring_files)} existing monitoring files")
+                
+        except Exception as e:
+            _LOGGER.warning(f"⚠️ Could not load session state: {e}")
+
     async def process_multi_key_update(self, raw_data: Dict[str, Any]) -> Optional[str]:
-        """
-        Process multi-key update with same analysis as Key 180.
-        
-        Args:
-            raw_data: Complete raw API data with all keys
-        
-        Returns:
-            Path to created file or None if no logging needed
-        """
+        """Process multi-key update with enhanced smart logging v4.0."""
         try:
             self.total_updates_received += 1
             
-            # Extract monitored keys that have data
+            # Extract available monitored keys
             available_keys = {key: raw_data[key] for key in self.monitored_keys if key in raw_data and raw_data[key] is not None}
             
             if not available_keys:
-                _LOGGER.debug("🔍 No monitored keys available in update")
                 return None
             
-            # Calculate combined hash for change detection
+            # Generate data hash for duplicate detection
             combined_data = json.dumps(available_keys, sort_keys=True)
             data_hash = hashlib.md5(combined_data.encode()).hexdigest()
             
-            # Smart decision: Should we log this update?
-            should_log, log_reason = await self._should_log_multi_key_update(available_keys, data_hash, raw_data)
+            # Smart logging decision
+            should_log, log_reason = await self._should_log_multi_key_update(available_keys, data_hash)
             
             if not should_log:
-                self.duplicates_skipped += 1
+                if log_reason == "duplicate_data":
+                    self.duplicates_skipped += 1
                 return None
             
-            # Determine appropriate logging mode and filename
+            # Determine logging mode and filename
             log_mode, filename = await self._determine_log_mode_and_filename(log_reason)
             
             # Load sensors config for enhanced analysis
             sensors_config = await self._load_sensors_config()
             
-            # Create comprehensive multi-key analysis
+            # Create enhanced multi-key analysis
             analysis_data = await self._create_enhanced_multi_key_analysis(
                 available_keys, raw_data, log_mode, log_reason, sensors_config
             )
@@ -173,29 +144,22 @@ class EnhancedSmartMultiKeyInvestigationLogger:
             async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
                 await f.write(json.dumps(analysis_data, indent=2, ensure_ascii=False))
             
-            # Update state tracking
+            # Update state
             await self._update_state_after_logging(available_keys, data_hash, log_mode, filepath)
-            
-            # Cleanup old files if needed
-            if self.auto_cleanup_enabled:
-                await self._cleanup_old_files()
             
             self.meaningful_logs_created += 1
             
-            _LOGGER.info("📊 Enhanced multi-key log created: %s (Reason: %s, Keys: %d)", 
-                        filename, log_reason, len(available_keys))
-            _LOGGER.debug("📈 Stats: %d updates, %d logged, %d skipped", 
-                         self.total_updates_received, self.meaningful_logs_created, self.duplicates_skipped)
+            # Cleanup old files if needed
+            await self._cleanup_old_files()
             
             return str(filepath)
             
         except Exception as e:
-            _LOGGER.error("❌ Enhanced multi-key investigation processing failed: %s", e)
+            _LOGGER.error(f"❌ Multi-key processing error: {e}")
             return None
-    
-    async def _should_log_multi_key_update(self, available_keys: Dict[str, Any], data_hash: str, raw_data: Dict[str, Any]) -> Tuple[bool, str]:
-        """Intelligent decision on whether to log this multi-key update."""
-        
+
+    async def _should_log_multi_key_update(self, available_keys: Dict[str, Any], data_hash: str) -> Tuple[bool, str]:
+        """Determine if we should log this multi-key update."""
         # Always log if no baseline captured
         if not self.baseline_captured:
             return True, "baseline_capture"
@@ -237,7 +201,6 @@ class EnhancedSmartMultiKeyInvestigationLogger:
     
     async def _analyze_key_change_significance(self, key: str, old_value: Any, new_value: Any) -> Dict[str, Any]:
         """Analyze the significance of a change in a specific key."""
-        
         # For numeric values (potential percentages)
         if isinstance(old_value, (int, float)) and isinstance(new_value, (int, float)):
             difference = abs(new_value - old_value)
@@ -292,29 +255,23 @@ class EnhancedSmartMultiKeyInvestigationLogger:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         
         if log_reason == "baseline_capture":
-            mode = LoggingMode.BASELINE
-            filename = f"multi_key_baseline_{timestamp}.json"
-        elif "significant_changes" in log_reason:
-            mode = LoggingMode.SMART_MONITORING
-            filename = f"multi_key_significant_change_{timestamp}.json"
-        elif "cleaning_activity" in log_reason:
-            mode = LoggingMode.CLEANING_DETECTED
-            filename = f"multi_key_cleaning_activity_{timestamp}.json"
-        elif log_reason.startswith("manual_"):
-            mode = LoggingMode.MANUAL_TRIGGER
-            filename = f"multi_key_manual_{log_reason}_{timestamp}.json"
+            return LoggingMode.BASELINE, f"multi_key_baseline_{timestamp}.json"
+        elif "post_cleaning" in log_reason:
+            return LoggingMode.POST_CLEANING, f"multi_key_post_cleaning_{timestamp}.json"
         else:
-            mode = LoggingMode.SMART_MONITORING
-            filename = f"multi_key_monitoring_{timestamp}.json"
-        
-        return mode, filename
+            return LoggingMode.SMART_MONITORING, f"multi_key_monitoring_{timestamp}.json"
     
-    async def _create_enhanced_multi_key_analysis(self, available_keys: Dict[str, Any], full_raw_data: Dict[str, Any], 
-                                                 log_mode: LoggingMode, log_reason: str, 
-                                                 sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Create comprehensive multi-key analysis with same structure as Key 180."""
+    async def _create_enhanced_multi_key_analysis(
+        self, 
+        available_keys: Dict[str, Any], 
+        full_raw_data: Dict[str, Any], 
+        log_mode: LoggingMode, 
+        log_reason: str,
+        sensors_config: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Create comprehensive multi-key analysis with enhanced features."""
         
-        analysis = {
+        analysis_data = {
             "metadata": {
                 "device_id": self.device_id,
                 "session_id": self.session_id,
@@ -325,7 +282,7 @@ class EnhancedSmartMultiKeyInvestigationLogger:
                 "smart_logger_version": "4.0_multi_key",
                 "file_number": self.meaningful_logs_created + 1,
                 "self_contained": True,
-                "includes_sensors_config": True,
+                "includes_sensors_config": sensors_config is not None,
                 "monitored_keys_count": len(self.monitored_keys),
                 "available_keys_count": len(available_keys)
             },
@@ -338,83 +295,86 @@ class EnhancedSmartMultiKeyInvestigationLogger:
                 "available_keys": list(available_keys.keys()),
                 "missing_keys": [key for key in self.monitored_keys if key not in available_keys]
             },
-            "multi_key_data": {},  # Each key gets same analysis as Key 180
-            "change_analysis": {},
-            "context_data": self._extract_efficient_context(full_raw_data),
-            "sensors_reference": await self._create_sensors_reference(sensors_config),
-            "cross_key_analysis": await self._create_cross_key_analysis(available_keys, sensors_config),
-            "search_results": await self._search_for_known_values(available_keys)
+            "multi_key_data": {}
         }
         
-        # Analyze each key with same infrastructure as Key 180
+        # Add individual key analysis
         for key, value in available_keys.items():
-            analysis["multi_key_data"][f"key_{key}_data"] = await self._create_single_key_analysis(key, value, sensors_config)
+            key_data = {
+                "raw_data": value,
+                "data_type": type(value).__name__,
+                "length": len(str(value)),
+                "data_hash": hashlib.md5(str(value).encode()).hexdigest(),
+                "analysis": await self._analyze_key_value(key, value)
+            }
+            
+            # Add change detection if we have previous data
+            if key in self.key_last_values:
+                last_value = self.key_last_values[key]
+                change_analysis = await self._analyze_key_change_significance(key, last_value, value)
+                key_data["change_from_last"] = change_analysis
+            
+            analysis_data["multi_key_data"][f"key_{key}_data"] = key_data
         
-        # Add change analysis if we have previous data
-        if self.last_logged_data:
-            analysis["change_analysis"] = await self._analyze_multi_key_changes(available_keys, self.last_logged_data)
+        # Add context and reference data
+        analysis_data["context"] = self._extract_efficient_context(full_raw_data)
+        analysis_data["sensors_reference"] = await self._create_sensors_reference(sensors_config)
         
-        return analysis
+        # Add cross-key analysis for discoveries
+        analysis_data["cross_key_analysis"] = await self._perform_cross_key_analysis(available_keys)
+        analysis_data["search_results"] = await self._perform_targeted_searches(available_keys)
+        
+        return analysis_data
     
-    async def _create_single_key_analysis(self, key: str, value: Any, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Create detailed analysis for a single key using same structure as Key 180."""
+    async def _analyze_key_value(self, key: str, value: Any) -> Dict[str, Any]:
+        """Analyze individual key value for patterns and potential meanings."""
+        analysis = {}
         
-        key_analysis = {
-            "raw_data": value,
-            "data_type": type(value).__name__,
-            "length": len(str(value)),
-            "data_hash": hashlib.md5(str(value).encode()).hexdigest(),
-            "analysis": {}
-        }
-        
-        # Numeric analysis (potential percentages/battery/water tank)
         if isinstance(value, (int, float)):
-            key_analysis["analysis"]["numeric"] = {
+            # Numeric analysis
+            analysis["numeric"] = {
                 "value": value,
-                "is_percentage_range": self.accessory_value_range[0] <= value <= self.accessory_value_range[1],
-                "potential_battery": key in ["163", "162", "168"] and 0 <= value <= 100,
-                "potential_water_tank": key in ["161", "167", "177", "179"] and 0 <= value <= 100,
+                "is_percentage_range": 0 <= value <= 100,
+                "potential_battery": value > 0 and key in ["163", "161"],
+                "potential_water_tank": value > 0 and key in ["161", "167", "177"],
                 "potential_accessory_wear": 0 <= value <= 100
             }
         
-        # Base64 analysis (same as Key 180)
-        elif isinstance(value, str) and len(value) > 4:
+        elif isinstance(value, str):
+            # String/Base64 analysis
             try:
-                decoded_data = base64.b64decode(value)
-                key_analysis["analysis"]["base64"] = {
+                # Try to decode as base64
+                decoded = base64.b64decode(value)
+                analysis["base64"] = {
                     "is_valid_base64": True,
-                    "decoded_length": len(decoded_data),
-                    "decoded_hex": decoded_data.hex()[:100],  # First 50 bytes
+                    "decoded_length": len(decoded),
+                    "decoded_hex": decoded.hex(),
                     "percentage_candidates": []
                 }
                 
-                # Search for percentage-like bytes (same as Key 180)
-                for i, byte_val in enumerate(decoded_data):
-                    if self.accessory_value_range[0] <= byte_val <= self.accessory_value_range[1]:
-                        key_analysis["analysis"]["base64"]["percentage_candidates"].append({
+                # Look for percentage-like bytes
+                for i, byte_val in enumerate(decoded):
+                    if 0 <= byte_val <= 100:
+                        analysis["base64"]["percentage_candidates"].append({
                             "position": i,
                             "value": byte_val,
                             "hex": f"0x{byte_val:02x}"
                         })
                 
-            except Exception as e:
-                key_analysis["analysis"]["base64"] = {
+            except:
+                analysis["string"] = {
                     "is_valid_base64": False,
-                    "decode_error": str(e)
+                    "length": len(value),
+                    "potential_battery": False,
+                    "potential_water_tank": False,
+                    "potential_accessory_wear": False
                 }
         
-        # Add previous value comparison
-        last_value = self.key_last_values.get(key)
-        if last_value is not None:
-            change_analysis = await self._analyze_key_change_significance(key, last_value, value)
-            key_analysis["change_from_last"] = change_analysis
-        
-        return key_analysis
+        return analysis
     
-    async def _create_cross_key_analysis(self, available_keys: Dict[str, Any], sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze relationships and patterns across all keys."""
-        
-        cross_analysis = {
+    async def _perform_cross_key_analysis(self, available_keys: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform cross-key analysis to find relationships and patterns."""
+        analysis = {
             "water_tank_candidates": {},
             "battery_candidates": {},
             "accessory_wear_candidates": {},
@@ -422,159 +382,100 @@ class EnhancedSmartMultiKeyInvestigationLogger:
             "value_distribution": {}
         }
         
-        # Search for water tank candidates (looking for ~50-53%)
+        # Look for water tank candidates (around 50-90%)
         for key, value in available_keys.items():
-            if isinstance(value, (int, float)) and 45 <= value <= 60:
-                cross_analysis["water_tank_candidates"][key] = {
+            if isinstance(value, (int, float)) and 40 <= value <= 90:
+                analysis["water_tank_candidates"][key] = {
                     "value": value,
-                    "confidence": "high" if 50 <= value <= 55 else "medium"
+                    "confidence": "high" if 50 <= value <= 80 else "medium"
                 }
         
-        # Search for battery candidates (looking for ~93% from your data)
+        # Look for battery candidates (usually higher values)
         for key, value in available_keys.items():
             if isinstance(value, (int, float)) and 80 <= value <= 100:
-                cross_analysis["battery_candidates"][key] = {
+                analysis["battery_candidates"][key] = {
                     "value": value,
-                    "confidence": "high" if 90 <= value <= 95 else "medium"
+                    "confidence": "high" if key == "163" else "medium"
                 }
         
-        # Search for accessory wear patterns in base64 data
+        # Look for accessory wear in base64 data
         for key, value in available_keys.items():
             if isinstance(value, str):
                 try:
-                    decoded_data = base64.b64decode(value)
-                    wear_candidates = []
-                    for i, byte_val in enumerate(decoded_data):
-                        if 90 <= byte_val <= 100:  # High wear percentages
-                            wear_candidates.append({"position": i, "value": byte_val})
-                    if wear_candidates:
-                        cross_analysis["accessory_wear_candidates"][key] = wear_candidates
+                    decoded = base64.b64decode(value)
+                    candidates = []
+                    for i, byte_val in enumerate(decoded):
+                        if 90 <= byte_val <= 100:  # High wear values
+                            candidates.append({
+                                "position": i,
+                                "value": byte_val
+                            })
+                    if candidates:
+                        analysis["accessory_wear_candidates"][key] = candidates
                 except:
-                    pass
+                    continue
         
-        return cross_analysis
+        return analysis
     
-    async def _search_for_known_values(self, available_keys: Dict[str, Any]) -> Dict[str, Any]:
-        """Search for known values like water tank (50), battery (93), etc."""
-        
+    async def _perform_targeted_searches(self, available_keys: Dict[str, Any]) -> Dict[str, Any]:
+        """Perform targeted searches for specific values like water tank, battery, etc."""
+        # This would search for specific percentage values we're looking for
+        # Based on your Android app values
         search_results = {
             "water_tank_50_search": [],
             "battery_93_search": [],
             "speed_3_search": [],
             "percentage_values": [],
-            "summary": {}
+            "summary": {
+                "water_tank_candidates": 0,
+                "battery_candidates": 0,
+                "speed_candidates": 0,
+                "total_percentage_values": 0,
+                "most_likely_water_tank": None,
+                "most_likely_battery": None
+            }
         }
         
-        # Search for water tank value (50 from your data)
+        # Search for specific values
         for key, value in available_keys.items():
-            if value == 50:
-                search_results["water_tank_50_search"].append({
-                    "key": key,
-                    "value": value,
-                    "type": type(value).__name__,
-                    "confidence": "exact_match"
-                })
+            if isinstance(value, (int, float)):
+                # Water tank search (around 50%)
+                if value == 50:
+                    search_results["water_tank_50_search"].append({
+                        "key": key,
+                        "value": value,
+                        "type": "int",
+                        "confidence": "exact_match"
+                    })
+                
+                # Add to percentage values list
+                if 0 <= value <= 100:
+                    potential_meaning = "unknown"
+                    if 40 <= value <= 60:
+                        potential_meaning = "likely_water_tank"
+                    elif 90 <= value <= 100:
+                        potential_meaning = "likely_battery"
+                    elif 1 <= value <= 10:
+                        potential_meaning = "likely_speed_or_mode"
+                    
+                    search_results["percentage_values"].append({
+                        "key": key,
+                        "value": value,
+                        "potential_meaning": potential_meaning
+                    })
         
-        # Search for battery value (93 from your data)  
-        for key, value in available_keys.items():
-            if value == 93:
-                search_results["battery_93_search"].append({
-                    "key": key,
-                    "value": value,
-                    "type": type(value).__name__,
-                    "confidence": "exact_match"
-                })
+        # Update summary
+        search_results["summary"]["total_percentage_values"] = len(search_results["percentage_values"])
+        search_results["summary"]["water_tank_candidates"] = len(search_results["water_tank_50_search"])
         
-        # Search for speed value (3 from your data)
-        for key, value in available_keys.items():
-            if value == 3:
-                search_results["speed_3_search"].append({
-                    "key": key,
-                    "value": value,
-                    "type": type(value).__name__,
-                    "confidence": "exact_match"
-                })
-        
-        # Collect all percentage-like values
-        for key, value in available_keys.items():
-            if isinstance(value, (int, float)) and 0 <= value <= 100:
-                search_results["percentage_values"].append({
-                    "key": key,
-                    "value": value,
-                    "potential_meaning": self._guess_percentage_meaning(key, value)
-                })
-        
-        # Create search summary
-        search_results["summary"] = {
-            "water_tank_candidates": len(search_results["water_tank_50_search"]),
-            "battery_candidates": len(search_results["battery_93_search"]), 
-            "speed_candidates": len(search_results["speed_3_search"]),
-            "total_percentage_values": len(search_results["percentage_values"]),
-            "most_likely_water_tank": search_results["water_tank_50_search"][0]["key"] if search_results["water_tank_50_search"] else None,
-            "most_likely_battery": search_results["battery_93_search"][0]["key"] if search_results["battery_93_search"] else None
-        }
+        # Find most likely candidates
+        if search_results["water_tank_50_search"]:
+            search_results["summary"]["most_likely_water_tank"] = search_results["water_tank_50_search"][0]["key"]
         
         return search_results
     
-    def _guess_percentage_meaning(self, key: str, value: int) -> str:
-        """Guess what a percentage value might represent based on key and value."""
-        if key == "161" and 45 <= value <= 60:
-            return "likely_water_tank"
-        elif key == "163" and 80 <= value <= 100:
-            return "likely_battery"
-        elif key == "158" and 0 <= value <= 5:
-            return "likely_speed_setting"
-        elif 95 <= value <= 100:
-            return "likely_accessory_wear"
-        elif 80 <= value <= 100:
-            return "possible_battery_or_wear"
-        elif 40 <= value <= 70:
-            return "possible_water_tank"
-        else:
-            return "unknown_percentage"
-    
-    async def _analyze_multi_key_changes(self, current_keys: Dict[str, Any], last_keys: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze changes across all keys since last logging."""
-        
-        changes = {
-            "summary": {
-                "total_keys_changed": 0,
-                "significant_changes": 0,
-                "new_keys": [],
-                "removed_keys": [],
-                "unchanged_keys": []
-            },
-            "key_changes": {}
-        }
-        
-        # Find new and removed keys
-        current_key_set = set(current_keys.keys())
-        last_key_set = set(last_keys.keys())
-        
-        changes["summary"]["new_keys"] = list(current_key_set - last_key_set)
-        changes["summary"]["removed_keys"] = list(last_key_set - current_key_set)
-        
-        # Analyze changes in common keys
-        common_keys = current_key_set & last_key_set
-        
-        for key in common_keys:
-            current_value = current_keys[key]
-            last_value = last_keys[key]
-            
-            if current_value != last_value:
-                change_analysis = await self._analyze_key_change_significance(key, last_value, current_value)
-                changes["key_changes"][key] = change_analysis
-                changes["summary"]["total_keys_changed"] += 1
-                
-                if change_analysis["significant"]:
-                    changes["summary"]["significant_changes"] += 1
-            else:
-                changes["summary"]["unchanged_keys"].append(key)
-        
-        return changes
-    
-    async def _create_sensors_reference(self, sensors_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Create complete sensors configuration reference for self-contained analysis."""
+    async def _create_sensors_reference(self, sensors_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Create sensors configuration reference for self-contained analysis."""
         if not sensors_config:
             return {"error": "No sensors configuration available"}
         
@@ -697,88 +598,94 @@ class EnhancedSmartMultiKeyInvestigationLogger:
     
     async def generate_session_summary(self) -> str:
         """Generate enhanced session summary with multi-key analysis."""
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"multi_key_session_summary_{self.session_id}_{timestamp}.json"
-            
-            # Collect all investigation files from this session
-            session_files = list(self.investigation_dir.glob(f"multi_key_*{self.session_id[:8]}*.json"))
-            session_files.extend(list(self.investigation_dir.glob("multi_key_*.json")))
-            
-            # Load sensors config
-            sensors_config = await self._load_sensors_config()
-            
-            summary = {
-                "metadata": {
-                    "session_id": self.session_id,
-                    "device_id": self.device_id,
-                    "generation_timestamp": datetime.now().isoformat(),
-                    "summary_version": "4.0_multi_key",
-                    "total_monitored_keys": len(self.monitored_keys),
-                    "session_files_analyzed": len(session_files)
-                },
-                "session_statistics": {
-                    "total_updates_received": self.total_updates_received,
-                    "meaningful_logs_created": self.meaningful_logs_created,
-                    "duplicates_skipped": self.duplicates_skipped,
-                    "efficiency_percentage": round((self.duplicates_skipped / max(1, self.total_updates_received)) * 100, 1),
-                    "key_change_counts": self.key_change_counts,
-                    "most_active_keys": sorted(self.key_change_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-                },
-                "multi_key_summary": {
-                    "monitored_keys": self.monitored_keys,
-                    "last_known_values": self.key_last_values,
-                    "baseline_captured": self.baseline_captured,
-                    "current_mode": self.current_mode.value
-                },
-                "sensors_reference": await self._create_sensors_reference(sensors_config),
-                "investigation_workflow": {
-                    "next_steps": [
-                        "1. Review water_tank_candidates for value ~50",
-                        "2. Review battery_candidates for value ~93", 
-                        "3. Run cleaning cycle and capture post_cleaning data",
-                        "4. Compare before/after values to find wear patterns",
-                        "5. Update sensors.json with discovered positions"
-                    ],
-                    "key_findings": {
-                        "water_tank_candidates": [k for k, v in self.key_last_values.items() if isinstance(v, (int, float)) and 45 <= v <= 60],
-                        "battery_candidates": [k for k, v in self.key_last_values.items() if isinstance(v, (int, float)) and 80 <= v <= 100],
-                        "speed_candidates": [k for k, v in self.key_last_values.items() if v == 3]
-                    }
-                }
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        filename = f"enhanced_multi_key_session_summary_{self.session_id}_{timestamp}.json"
+        
+        # Collect all investigation files for analysis
+        baseline_files = list(self.investigation_dir.glob("multi_key_baseline_*.json"))
+        monitoring_files = list(self.investigation_dir.glob("multi_key_monitoring_*.json"))
+        post_cleaning_files = list(self.investigation_dir.glob("multi_key_post_cleaning_*.json"))
+        
+        summary_data = {
+            "metadata": {
+                "session_id": self.session_id,
+                "device_id": self.device_id,
+                "timestamp": datetime.now().isoformat(),
+                "summary_version": "4.0_multi_key",
+                "total_files_analyzed": len(baseline_files) + len(monitoring_files) + len(post_cleaning_files)
+            },
+            "session_statistics": {
+                "total_updates_received": self.total_updates_received,
+                "meaningful_logs_created": self.meaningful_logs_created,
+                "duplicates_skipped": self.duplicates_skipped,
+                "logging_efficiency": f"{(self.duplicates_skipped / max(1, self.total_updates_received) * 100):.1f}%",
+                "baseline_files": len(baseline_files),
+                "monitoring_files": len(monitoring_files),
+                "post_cleaning_files": len(post_cleaning_files)
+            },
+            "key_change_summary": {
+                "monitored_keys": self.monitored_keys,
+                "key_change_counts": self.key_change_counts,
+                "total_changes": sum(self.key_change_counts.values()),
+                "most_active_keys": sorted(self.key_change_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+            },
+            "investigation_directory": str(self.investigation_dir),
+            "file_inventory": {
+                "baseline_files": [f.name for f in baseline_files],
+                "monitoring_files": [f.name for f in monitoring_files],
+                "post_cleaning_files": [f.name for f in post_cleaning_files]
             }
-            
-            # Write summary file
-            filepath = self.investigation_dir / filename
-            async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-                await f.write(json.dumps(summary, indent=2, ensure_ascii=False))
-            
-            _LOGGER.info("📋 Multi-key session summary generated: %s", filename)
-            return str(filepath)
-            
-        except Exception as e:
-            _LOGGER.error("❌ Session summary generation failed: %s", e)
-            return f"Error generating summary: {e}"
+        }
+        
+        # Write summary file
+        filepath = self.investigation_dir / filename
+        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(summary_data, indent=2, ensure_ascii=False))
+        
+        return str(filepath)
     
     def get_smart_status(self) -> Dict[str, Any]:
-        """Get current multi-key investigation status."""
-        efficiency = round((self.duplicates_skipped / max(1, self.total_updates_received)) * 100, 1)
+        """Get current smart logging status."""
+        efficiency_percentage = (self.duplicates_skipped / max(1, self.total_updates_received) * 100)
         
         return {
             "session_id": self.session_id,
-            "version": "4.0_multi_key",
             "baseline_captured": self.baseline_captured,
             "current_mode": self.current_mode.value,
             "total_updates": self.total_updates_received,
             "meaningful_logs": self.meaningful_logs_created,
             "duplicates_skipped": self.duplicates_skipped,
-            "efficiency_percentage": efficiency,
+            "efficiency_percentage": round(efficiency_percentage, 1),
             "monitored_keys_count": len(self.monitored_keys),
             "investigation_directory": str(self.investigation_dir),
             "last_log_time": self.last_log_time.isoformat() if self.last_log_time else None,
             "key_change_summary": {
-                "most_active": max(self.key_change_counts.items(), key=lambda x: x[1]) if self.key_change_counts else None,
-                "total_changes": sum(self.key_change_counts.values())
+                "total_changes": sum(self.key_change_counts.values()),
+                "key_change_counts": self.key_change_counts,
+                "most_active_keys": sorted(self.key_change_counts.items(), key=lambda x: x[1], reverse=True)[:3]
             }
         }
-        
+    
+    async def _load_sensors_config(self) -> Optional[Dict[str, Any]]:
+        """Load sensors configuration for analysis reference."""
+        try:
+            # Try to load device-specific config first
+            device_config_path = self.integration_dir / "accessories" / f"sensors_{self.device_id}.json"
+            if device_config_path.exists():
+                async with aiofiles.open(device_config_path, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    return json.loads(content)
+            
+            # Fallback to template config
+            template_config_path = self.integration_dir / "accessories" / "sensors.json"
+            if template_config_path.exists():
+                async with aiofiles.open(template_config_path, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    return json.loads(content)
+            
+            return None
+            
+        except Exception as e:
+            _LOGGER.warning(f"⚠️ Could not load sensors config: {e}")
+            return None
+            
