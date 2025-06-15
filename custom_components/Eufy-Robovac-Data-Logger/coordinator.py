@@ -18,7 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class EufyX10DebugCoordinator(DataUpdateCoordinator):
-    """Eufy Robovac Debugging data coordinator with RestConnect and Enhanced Smart Investigation Mode v4.0."""
+    """Eufy Robovac Debugging data coordinator with DPS-only data fetching and Enhanced Smart Investigation Mode v4.0."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize the coordinator."""
@@ -35,7 +35,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.investigation_mode = entry.options.get(
             CONF_INVESTIGATION_MODE,
             entry.data.get(CONF_INVESTIGATION_MODE, False)
-)
+        )
         
         # Store raw data for debugging
         self.raw_data: Dict[str, Any] = {}
@@ -53,9 +53,8 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self._quiet_updates_count = 0
         self._quiet_log_interval = 120  # Brief status every 2 minutes
         
-        # Connection tracking
+        # Connection tracking - DPS ONLY
         self._eufy_login = None
-        self._rest_client = None
         self._last_successful_update = None
         self._consecutive_failures = 0
         
@@ -114,7 +113,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         await self._initialize_multi_key_investigation_mode()
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        """Fetch data from Eufy device with RestConnect and Enhanced Smart Investigation Mode v4.0."""
+        """Fetch data from Eufy device with DPS-only and Enhanced Smart Investigation Mode v4.0."""
         try:
             self.update_count += 1
             do_detailed = self._should_do_detailed_logging()
@@ -135,8 +134,8 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     self._debug_log(f"=== 🗂️ Monitoring {len(MONITORED_KEYS)} keys for comprehensive analysis ===", "info")
                 self._debug_log("=" * 60, "info")
             
-            # Fetch data using RestConnect (preferred) or fallback to basic login
-            await self._fetch_eufy_data_with_rest()
+            # Fetch data using DPS-only (no REST API)
+            await self._fetch_eufy_data_dps_only()
             
             # UPDATED: ENHANCED SMART INVESTIGATION MODE v4.0: Process MULTI-KEY data
             if self.investigation_mode:
@@ -158,139 +157,106 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 investigation_status = ""
                 if self.investigation_mode and self.smart_investigation_logger:
                     smart_status = self.smart_investigation_logger.get_smart_status()
-                    investigation_status = f" [✨ Enhanced v4.0: {smart_status['meaningful_logs']}/{smart_status['total_updates']} files, {smart_status['monitored_keys_count']} keys]"
+                    investigation_status = f" [✨ Enhanced v4.0: {smart_status['meaningful_logs']} files logged, {smart_status['efficiency_percentage']:.1f}% efficiency]"
                 
-                self._debug_log(f"✅ Update #{self.update_count} complete{investigation_status}", "info")
+                self._debug_log(f"✅ UPDATE #{self.update_count} COMPLETED - Battery: {self.parsed_data.get('battery', '?')}%, Raw keys: {len(self.raw_data)}, Monitored found: {len(self.parsed_data.get('monitored_keys_found', []))}/{len(MONITORED_KEYS)}{investigation_status}", "info")
                 self._debug_log("=" * 60, "info")
             else:
+                # Log brief status
                 self._log_brief_status()
             
-            return self.parsed_data
+            # Return combined data
+            return {
+                **self.parsed_data,
+                "last_update": self.last_update,
+                "update_count": self.update_count,
+                "raw_data_count": len(self.raw_data),
+                "device_id": self.device_id,
+            }
             
         except Exception as e:
             self._consecutive_failures += 1
-            
-            if self._consecutive_failures <= 3:
-                self._debug_log(f"⚠️ Update failed (attempt {self._consecutive_failures}/3): {e}", "warning", force=True)
+            self._debug_log(f"❌ Update #{self.update_count} failed (consecutive failures: {self._consecutive_failures}): {e}", "error", force=True)
+            raise UpdateFailed(f"Failed to fetch data: {e}")
+
+    async def _fetch_eufy_data_dps_only(self) -> None:
+        """Fetch data using DPS-only (basic login) - NO REST API."""
+        try:
+            # Use ONLY basic login/DPS for data fetching
+            if self._eufy_login:
+                try:
+                    await self._eufy_login.updateDevice()
+                    self.raw_data = self._eufy_login.raw_data.copy()
+                    self.parsed_data["data_source"] = "DPS Only (Basic Login)"
+                    
+                    if self._should_do_detailed_logging():
+                        self._debug_log("📱 Data fetched via DPS-only (basic login)", "debug")
+                        
+                except Exception as login_error:
+                    self._debug_log(f"❌ DPS login failed: {login_error}", "error")
+                    raise UpdateFailed(f"DPS login failed: {login_error}")
             else:
-                self._debug_log(f"❌ Multiple consecutive failures ({self._consecutive_failures}): {e}", "error", force=True)
+                raise UpdateFailed("No DPS authentication client available")
+                
+        except Exception as e:
+            self._debug_log(f"❌ Data fetch failed: {e}", "error")
+            raise UpdateFailed(f"Failed to fetch data: {e}")
+
+    async def _process_sensor_data(self) -> None:
+        """Process raw data into structured sensor data."""
+        try:
+            # Extract common sensor values
+            self.parsed_data["battery"] = self._parse_battery()
+            self.parsed_data["clean_speed"] = self._parse_clean_speed()
+            self.parsed_data["work_status"] = self._parse_work_status()
             
-            raise UpdateFailed(f"Error communicating with Eufy device: {e}")
+            # Track which monitored keys we actually found
+            found_keys = []
+            for key in MONITORED_KEYS:
+                if key in self.raw_data and self.raw_data[key] is not None:
+                    found_keys.append(key)
+            
+            self.parsed_data["monitored_keys_found"] = found_keys
+            
+            if self._should_do_detailed_logging():
+                self._debug_log(f"🔍 Found {len(found_keys)}/{len(MONITORED_KEYS)} monitored keys", "debug")
+                
+        except Exception as e:
+            self._debug_log(f"❌ Sensor data processing error: {e}", "error")
+
+    async def _process_enhanced_smart_multi_key_investigation_data(self) -> None:
+        """Process Enhanced Smart Investigation Mode v4.0 with multi-key support."""
+        try:
+            if not self.smart_investigation_logger:
+                return
+            
+            # Process multi-key investigation data
+            investigation_file = await self.smart_investigation_logger.process_multi_key_update(self.raw_data)
+            
+            if investigation_file:
+                self._debug_log(f"🔍 Enhanced Smart Investigation v4.0: Logged multi-key data to {Path(investigation_file).name}", "info")
+            
+        except Exception as e:
+            self._debug_log(f"❌ Enhanced Smart Investigation v4.0 processing error: {e}", "error")
 
     async def _initialize_multi_key_investigation_mode(self) -> None:
         """Initialize Enhanced Smart Investigation Mode v4.0 with multi-key support."""
-        if not self.smart_investigation_logger:
+        if not self.investigation_mode or not self.smart_investigation_logger:
             return
-            
+        
         try:
-            self._debug_log("🔍 Initializing Enhanced Smart Investigation Mode v4.0 for intelligent multi-key analysis", "info", force=True)
-            self._debug_log(f"📂 Investigation directory: {self.smart_investigation_logger.investigation_dir}", "info", force=True)
-            self._debug_log(f"🔬 Session ID: {self.smart_investigation_logger.session_id}", "info", force=True)
-            self._debug_log(f"🗂️ Monitoring keys: {', '.join(self.smart_investigation_logger.monitored_keys)}", "info", force=True)
-            self._debug_log("🧠 ENHANCED FEATURES v4.0: Multi-key support, sensors config integration, self-contained files", "info", force=True)
-            self._debug_log("🎯 TARGET: ALL monitored keys analysis with cross-key correlation and water tank/battery discovery", "info", force=True)
-            self._debug_log("📊 EFFICIENCY: 80-90% file reduction with complete reference data in each file", "info", force=True)
-            self._debug_log("✨ NEW v4.0: Multi-key infrastructure replicating Key 180 analysis for all monitored keys", "info", force=True)
+            # Initialize the multi-key logger
+            await self.smart_investigation_logger.initialize()
+            
+            self._debug_log("🔍 Enhanced Smart Multi-Key Investigation Mode v4.0 ready", "info", force=True)
+            self._debug_log(f"🗂️ Monitoring {len(MONITORED_KEYS)} keys for comprehensive analysis", "info", force=True)
+            self._debug_log(f"📁 Investigation files: {self.smart_investigation_logger.investigation_dir}", "info", force=True)
             
         except Exception as e:
-            self._debug_log(f"❌ Failed to initialize enhanced smart investigation mode v4.0: {e}", "error", force=True)
-
-    async def _process_enhanced_smart_multi_key_investigation_data(self) -> None:
-        """Process multi-key data using enhanced smart investigation logger v4.0."""
-        if not self.smart_investigation_logger:
-            return
-            
-        try:
-            # UPDATED: Use new multi-key processing method
-            result_file = await self.smart_investigation_logger.process_multi_key_update(self.raw_data)
-            
-            if result_file:
-                filename = Path(result_file).name
-                self._debug_log(f"✨ Enhanced Smart Investigation v4.0: Multi-key analysis file created: {filename}", "info")
-                
-                # Get enhanced smart status for logging
-                smart_status = self.smart_investigation_logger.get_smart_status()
-                efficiency = smart_status.get('efficiency_percentage', 0)
-                total_changes = smart_status.get('key_change_summary', {}).get('total_changes', 0)
-                self._debug_log(f"📊 Enhanced Stats v4.0: {smart_status['meaningful_logs']}/{smart_status['total_updates']} files "
-                              f"({efficiency:.1f}% efficient, {smart_status['monitored_keys_count']} keys, {total_changes} changes)", "debug")
-            else:
-                # No file created - either no change or duplicate
-                smart_status = self.smart_investigation_logger.get_smart_status()
-                if smart_status['total_updates'] % 10 == 0:  # Log efficiency every 10 updates
-                    efficiency = smart_status.get('efficiency_percentage', 0)
-                    self._debug_log(f"✨ Enhanced Smart Investigation v4.0: No significant changes detected (Efficiency: {efficiency:.1f}%)", "debug")
-            
-        except Exception as e:
-            self._debug_log(f"❌ Enhanced smart multi-key investigation v4.0 processing error: {e}", "error", force=True)
-
-    async def capture_investigation_baseline(self) -> str:
-        """Manually capture baseline for enhanced smart investigation v4.0."""
-        if not self.smart_investigation_logger:
-            return "Enhanced Smart Investigation mode v4.0 not enabled"
-            
-        try:
-            # Check if we have any monitored keys available
-            available_keys = [key for key in MONITORED_KEYS if key in self.raw_data and self.raw_data[key] is not None]
-            if not available_keys:
-                return "No monitored keys available for baseline capture"
-            
-            result_file = await self.smart_investigation_logger.capture_baseline(self.raw_data)
-            if result_file:
-                filename = Path(result_file).name
-                self._debug_log(f"🎯 Manual enhanced multi-key baseline captured v4.0: {filename}", "info", force=True)
-                return f"Enhanced smart multi-key baseline captured v4.0: {filename} ({len(available_keys)} keys)"
-            else:
-                return "Failed to capture enhanced multi-key baseline"
-                
-        except Exception as e:
-            return f"Error capturing enhanced multi-key baseline v4.0: {e}"
-
-    async def capture_investigation_post_cleaning(self) -> str:
-        """Manually capture post-cleaning data for enhanced smart investigation v4.0."""
-        if not self.smart_investigation_logger:
-            return "Enhanced Smart Investigation mode v4.0 not enabled"
-            
-        try:
-            # Check if we have any monitored keys available
-            available_keys = [key for key in MONITORED_KEYS if key in self.raw_data and self.raw_data[key] is not None]
-            if not available_keys:
-                return "No monitored keys available for post-cleaning capture"
-            
-            result_file = await self.smart_investigation_logger.capture_post_cleaning(self.raw_data)
-            if result_file:
-                filename = Path(result_file).name
-                self._debug_log(f"📊 Manual enhanced multi-key post-cleaning captured v4.0: {filename}", "info", force=True)
-                return f"Enhanced smart multi-key post-cleaning captured v4.0: {filename} ({len(available_keys)} keys)"
-            else:
-                return "Failed to capture enhanced multi-key post-cleaning data"
-                
-        except Exception as e:
-            return f"Error capturing enhanced multi-key post-cleaning v4.0: {e}"
-
-    async def get_investigation_summary(self) -> str:
-        """Get enhanced smart investigation session summary v4.0."""
-        if not self.smart_investigation_logger:
-            return "Enhanced Smart Investigation mode v4.0 not enabled"
-            
-        try:
-            summary_file = await self.smart_investigation_logger.generate_session_summary()
-            if summary_file:
-                filename = Path(summary_file).name
-                smart_status = self.smart_investigation_logger.get_smart_status()
-                efficiency = smart_status.get('efficiency_percentage', 0)
-                total_changes = smart_status.get('key_change_summary', {}).get('total_changes', 0)
-                self._debug_log(f"📋 Enhanced smart multi-key session summary v4.0 created: {filename} "
-                              f"(Efficiency: {efficiency:.1f}%, {total_changes} total changes tracked)", "info", force=True)
-                return f"Enhanced smart multi-key session summary v4.0: {filename}"
-            else:
-                return "Failed to generate enhanced multi-key summary"
-                
-        except Exception as e:
-            return f"Error generating enhanced multi-key summary v4.0: {e}"
+            self._debug_log(f"❌ Failed to initialize multi-key investigation mode v4.0: {e}", "error", force=True)
 
     def get_investigation_status(self) -> Dict[str, Any]:
-        """Get current enhanced smart investigation status v4.0."""
+        """Get investigation mode status information."""
         if not self.smart_investigation_logger:
             return {
                 "enabled": False,
@@ -336,102 +302,16 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 "status": f"Error getting status: {e}"
             }
 
-    async def _fetch_eufy_data_with_rest(self) -> None:
-        """Fetch data using RestConnect with fallback to basic login."""
-        try:
-            if self._rest_client and self._rest_client.is_connected:
-                # Try RestConnect first
-                try:
-                    await self._rest_client.updateDevice()
-                    self.raw_data = self._rest_client.raw_data.copy()
-                    self.parsed_data["data_source"] = "RestConnect Enhanced"
-                    
-                    if self._should_do_detailed_logging():
-                        self._debug_log("🌐 Data fetched via RestConnect", "debug")
-                    
-                    return
-                    
-                except Exception as rest_error:
-                    self._debug_log(f"⚠️ RestConnect failed, falling back to basic login: {rest_error}", "warning")
-            
-            # Fallback to basic login
-            if self._eufy_login:
-                try:
-                    await self._eufy_login.updateDevice()
-                    self.raw_data = self._eufy_login.raw_data.copy()
-                    self.parsed_data["data_source"] = "Basic Login Fallback"
-                    
-                    if self._should_do_detailed_logging():
-                        self._debug_log("📱 Data fetched via basic login fallback", "debug")
-                        
-                except Exception as login_error:
-                    self._debug_log(f"❌ Basic login also failed: {login_error}", "error")
-                    raise UpdateFailed(f"Both RestConnect and basic login failed: {login_error}")
-            else:
-                raise UpdateFailed("No authentication client available")
-                
-        except Exception as e:
-            self._debug_log(f"❌ Data fetch failed: {e}", "error")
-            raise UpdateFailed(f"Failed to fetch data: {e}")
-
-    async def _process_sensor_data(self) -> None:
-        """Process raw data into structured sensor data."""
-        try:
-            # Get found and missing keys for monitoring
-            found_keys = []
-            missing_keys = []
-            
-            for key in MONITORED_KEYS:
-                if key in self.raw_data and self.raw_data[key] is not None:
-                    found_keys.append(key)
-                else:
-                    missing_keys.append(key)
-            
-            # Store monitoring data
-            self.parsed_data["monitored_keys_found"] = found_keys
-            self.parsed_data["monitored_keys_missing"] = missing_keys
-            
-            # Parse known sensors
-            self.parsed_data["battery"] = self._parse_battery()
-            self.parsed_data["clean_speed"] = self._parse_clean_speed()
-            self.parsed_data["work_status"] = self._parse_work_status()
-            
-            # Store update metadata
-            self.parsed_data["last_update"] = time.time()
-            self.parsed_data["update_count"] = self.update_count
-            
-            # Log key availability
-            if self._should_do_detailed_logging():
-                coverage = len(found_keys) / len(MONITORED_KEYS) * 100
-                self._debug_log(f"📊 Key coverage: {len(found_keys)}/{len(MONITORED_KEYS)} ({coverage:.1f}%)", "debug")
-                self._debug_log(f"✅ Found: {', '.join(found_keys)}", "debug")
-                if missing_keys:
-                    self._debug_log(f"❌ Missing: {', '.join(missing_keys)}", "debug")
-            
-        except Exception as e:
-            self._debug_log(f"❌ Sensor data processing error: {e}", "error", force=True)
-
     def _parse_battery(self) -> Optional[int]:
-        """Parse battery level from available keys."""
-        # Try Key 163 first (from your live data: Key 163: 93)
+        """Parse battery level from Key 163."""
+        # Key 163 is confirmed working for battery
         if "163" in self.raw_data:
             try:
                 value = self.raw_data["163"]
-                if isinstance(value, (int, float)) and 0 <= value <= 100:
+                if isinstance(value, (int, float)):
                     return int(value)
             except:
                 pass
-        
-        # Try other potential battery keys
-        battery_candidates = ["162", "168"]
-        for key in battery_candidates:
-            if key in self.raw_data:
-                try:
-                    value = self.raw_data[key]
-                    if isinstance(value, (int, float)) and 80 <= value <= 100:
-                        return int(value)
-                except:
-                    pass
         
         return None
 
@@ -473,56 +353,60 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
     async def _process_accessory_data(self) -> None:
         """Process accessory data with change detection."""
         try:
+            # Check if we have any accessory sensors configured
+            if not self.accessory_sensors:
+                self.parsed_data["accessory_sensors"] = {}
+                return
+            
             accessory_data = {}
             changes_detected = False
             
-            # Process each configured accessory sensor
             for sensor_id, sensor_config in self.accessory_sensors.items():
                 try:
-                    key = sensor_config["key"]
+                    key = str(sensor_config.get("key"))
                     byte_position = sensor_config.get("byte_position")
                     
                     if key in self.raw_data and self.raw_data[key] is not None:
-                        # Extract value based on configuration
-                        detected_value = await self._extract_accessory_value(
-                            self.raw_data[key], byte_position, sensor_config
-                        )
+                        # Extract value from raw data
+                        raw_value = self.raw_data[key]
+                        detected_value = await self._extract_accessory_value(raw_value, byte_position, sensor_config)
                         
-                        # Check for changes
-                        previous_value = self.previous_accessory_data.get(sensor_id, {}).get("detected_value")
-                        if previous_value != detected_value:
-                            changes_detected = True
+                        # Calculate remaining hours and life
+                        configured_life = sensor_config.get("current_life_remaining", 100)
+                        max_hours = sensor_config.get("max_hours", 100)
+                        hours_remaining = int((configured_life / 100) * max_hours)
                         
+                        # Create sensor data
                         accessory_data[sensor_id] = {
-                            "name": sensor_config["name"],
-                            "current_life_remaining": sensor_config["current_life_remaining"],
+                            "name": sensor_config.get("name"),
+                            "description": sensor_config.get("description", ""),
+                            "configured_life": configured_life,
                             "detected_value": detected_value,
-                            "hours_remaining": sensor_config.get("hours_remaining", 0),
-                            "max_hours": sensor_config.get("max_life_hours", 0),
+                            "hours_remaining": hours_remaining,
+                            "max_hours": max_hours,
                             "threshold": sensor_config.get("replacement_threshold", 10),
+                            "detection_accuracy": self._calculate_detection_accuracy(detected_value, configured_life),
                             "enabled": sensor_config.get("enabled", True),
                             "key": key,
                             "byte_position": byte_position,
                             "notes": sensor_config.get("notes", ""),
-                            "last_updated": sensor_config.get("last_updated"),
-                            "detection_accuracy": self._calculate_detection_accuracy(
-                                detected_value, sensor_config["current_life_remaining"]
-                            ) if detected_value is not None else None
+                            "last_updated": sensor_config.get("last_updated")
                         }
                         
-                        if self._should_do_detailed_logging() and detected_value is not None:
-                            self._debug_log(f"🔧 {sensor_config['name']}: {detected_value}% "
-                                          f"(Expected: {sensor_config['current_life_remaining']}%, "
-                                          f"Key {key}, Byte {byte_position})", "debug")
+                        # Check for changes
+                        if sensor_id not in self.previous_accessory_data or self.previous_accessory_data[sensor_id] != accessory_data[sensor_id]:
+                            changes_detected = True
                     else:
-                        # Key not available
+                        # Key not available - create placeholder
                         accessory_data[sensor_id] = {
-                            "name": sensor_config["name"],
-                            "current_life_remaining": sensor_config["current_life_remaining"],
+                            "name": sensor_config.get("name"),
+                            "description": sensor_config.get("description", ""),
+                            "configured_life": sensor_config.get("current_life_remaining", 100),
                             "detected_value": None,
-                            "hours_remaining": sensor_config.get("hours_remaining", 0),
-                            "max_hours": sensor_config.get("max_life_hours", 0),
+                            "hours_remaining": 0,
+                            "max_hours": sensor_config.get("max_hours", 100),
                             "threshold": sensor_config.get("replacement_threshold", 10),
+                            "detection_accuracy": None,
                             "enabled": sensor_config.get("enabled", True),
                             "key": key,
                             "byte_position": byte_position,
@@ -585,14 +469,14 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             return None
 
     async def _initialize_clients(self) -> None:
-        """Initialize login and RestConnect clients."""
+        """Initialize DPS-only login client (NO RestConnect)."""
         try:
-            self._debug_log("🌐 Initializing RestConnect client...", "info", force=True)
+            self._debug_log("📱 Initializing DPS-only login client...", "info", force=True)
             
             # Import here to avoid circular imports
             from .controllers.login import EufyLogin
             
-            # Create login instance first
+            # Create login instance - DPS ONLY
             self._eufy_login = EufyLogin(
                 username=self.username,
                 password=self.password,
@@ -601,50 +485,11 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             
             # Initialize login to get authentication
             await self._eufy_login.init()
-            self._debug_log("✅ EufyLogin initialized successfully", "info", force=True)
-            
-            # Try to create RestConnect client (if available)
-            try:
-                from .controllers.rest_connect import RestConnect
-                
-                rest_config = {
-                    'deviceId': self.device_id,
-                    'deviceModel': self.device_model,
-                    'debug': self.debug_mode
-                }
-                
-                self._rest_client = RestConnect(
-                    config=rest_config,
-                    openudid=self.openudid,
-                    eufyCleanApi=self._eufy_login
-                )
-                
-                # Set debug logger for RestConnect
-                if self.debug_logger:
-                    self._rest_client.debug_logger = self.debug_logger
-                
-                # Try to connect
-                await self._rest_client.connect()
-                self._debug_log("✅ RestConnect client initialized and connected", "info", force=True)
-                
-            except ImportError:
-                self._debug_log("⚠️ RestConnect module not available, using basic login only", "warning", force=True)
-                self._rest_client = None
-            except Exception as rest_error:
-                self._debug_log(f"⚠️ RestConnect not available: {rest_error}, using basic login only", "warning", force=True)
-                self._rest_client = None
+            self._debug_log("✅ DPS-only EufyLogin initialized successfully", "info", force=True)
             
         except Exception as e:
-            self._debug_log(f"❌ Failed to initialize clients: {e}", "error", force=True)
-            # Fall back to basic login only
-            if not self._eufy_login:
-                from .controllers.login import EufyLogin
-                self._eufy_login = EufyLogin(
-                    username=self.username,
-                    password=self.password,
-                    openudid=self.openudid
-                )
-            self._debug_log("⚠️ Using basic login only", "warning", force=True)
+            self._debug_log(f"❌ Failed to initialize DPS login client: {e}", "error", force=True)
+            raise UpdateFailed(f"Failed to initialize login: {e}")
 
     def _should_do_detailed_logging(self) -> bool:
         """Determine if we should do detailed logging this update."""
@@ -716,60 +561,63 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             self._debug_log(f"❌ Failed to initialize accessory config: {e}", "error", force=True)
             self.accessory_sensors = {}
 
-    def get_restconnect_info(self) -> Dict[str, Any]:
-        """Get RestConnect connection information."""
-        try:
-            if not self._rest_client:
-                return {
-                    "is_connected": False,
-                    "connection_mode": "Basic Login Fallback",
-                    "last_update": self._last_successful_update,
-                    "update_count": self.update_count,
-                    "keys_received": len(self.raw_data),
-                    "has_auth_token": bool(self._eufy_login),
-                    "has_user_center_token": False,
-                    "has_gtoken": False,
-                    "device_id": self.device_id,
-                    "user_id": None,
-                    "api_endpoints_available": {}
-                }
-            
-            # Get RestConnect status
-            return self._rest_client.get_connection_info()
-            
-        except Exception as e:
-            self._debug_log(f"❌ Error getting RestConnect info: {e}", "error")
-            return {
-                "is_connected": False,
-                "connection_mode": "Error",
-                "error": str(e),
-                "last_update": self._last_successful_update,
-                "update_count": self.update_count,
-                "keys_received": len(self.raw_data),
-                "has_auth_token": False,
-                "has_user_center_token": False,
-                "has_gtoken": False,
-                "device_id": self.device_id,
-                "user_id": None,
-                "api_endpoints_available": {}
-            }
-
     def _debug_log(self, message: str, level: str = "info", force: bool = False) -> None:
         """Smart debug logging with level control."""
-        if not force and not self._should_do_detailed_logging():
-            return
-        
-        # Add device identifier for multi-device setups
-        prefixed_message = f"[{self.device_id[-6:]}] {message}"
-        
-        if level == "debug":
-            _LOGGER.debug(prefixed_message)
-        elif level == "info":
-            _LOGGER.info(prefixed_message)
-        elif level == "warning":
-            _LOGGER.warning(prefixed_message)
-        elif level == "error":
-            _LOGGER.error(prefixed_message)
-        else:
-            _LOGGER.info(prefixed_message)
+        try:
+            # Always log if forced or if debug mode is on
+            if force or self.debug_mode:
+                if level == "error":
+                    _LOGGER.error(message)
+                elif level == "warning":
+                    _LOGGER.warning(message)
+                elif level == "debug":
+                    _LOGGER.debug(message)
+                else:
+                    _LOGGER.info(message)
             
+            # Also log to debug logger if available
+            if self.debug_logger and hasattr(self.debug_logger, level):
+                getattr(self.debug_logger, level)(message)
+                
+        except Exception as e:
+            _LOGGER.error(f"Debug logging error: {e}")
+
+    # Service methods for investigation mode
+    async def capture_investigation_baseline(self) -> str:
+        """Service: Capture investigation baseline."""
+        if not self.smart_investigation_logger:
+            return "Investigation mode not enabled"
+        
+        try:
+            file_path = await self.smart_investigation_logger.capture_baseline(self.raw_data)
+            self._debug_log(f"🔍 Baseline captured: {Path(file_path).name}", "info", force=True)
+            return f"Baseline captured: {file_path}"
+        except Exception as e:
+            self._debug_log(f"❌ Failed to capture baseline: {e}", "error", force=True)
+            return f"Error: {e}"
+
+    async def capture_investigation_post_cleaning(self) -> str:
+        """Service: Capture post-cleaning investigation data."""
+        if not self.smart_investigation_logger:
+            return "Investigation mode not enabled"
+        
+        try:
+            file_path = await self.smart_investigation_logger.capture_post_cleaning(self.raw_data)
+            self._debug_log(f"🔍 Post-cleaning captured: {Path(file_path).name}", "info", force=True)
+            return f"Post-cleaning captured: {file_path}"
+        except Exception as e:
+            self._debug_log(f"❌ Failed to capture post-cleaning: {e}", "error", force=True)
+            return f"Error: {e}"
+
+    async def generate_investigation_summary(self) -> str:
+        """Service: Generate investigation session summary."""
+        if not self.smart_investigation_logger:
+            return "Investigation mode not enabled"
+        
+        try:
+            file_path = await self.smart_investigation_logger.generate_session_summary()
+            self._debug_log(f"🔍 Session summary generated: {Path(file_path).name}", "info", force=True)
+            return f"Session summary: {file_path}"
+        except Exception as e:
+            self._debug_log(f"❌ Failed to generate summary: {e}", "error", force=True)
+            return f"Error: {e}"

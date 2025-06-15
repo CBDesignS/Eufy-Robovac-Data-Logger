@@ -1,4 +1,4 @@
-"""Sensor platform for Eufy Robovac Data Logger integration - Investigation Mode Edition."""
+"""Sensor platform for Eufy Robovac Data Logger integration - DPS Only Edition."""
 import logging
 from typing import Any, Dict, Optional
 
@@ -25,20 +25,19 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Eufy Robovac Debug sensors with Investigation Mode."""
+    """Set up Eufy Robovac Debug sensors with DPS-only data fetching."""
     coordinator: EufyX10DebugCoordinator = hass.data[DOMAIN][entry.entry_id]
     
-    # Core sensors (working and reliable)
+    # Core sensors (working and reliable) - DPS Only
     entities = [
         EufyRobovacDebugBatterySensor(coordinator),           # ✅ Key 163 - Working
         EufyRobovacDebugCleanSpeedSensor(coordinator),        # ✅ Key 158 - Working
         EufyRobovacDebugRawDataSensor(coordinator),           # ✅ Debug tool - Useful
         EufyRobovacDebugMonitoringSensor(coordinator),        # ✅ Monitoring - Useful
         EufyRobovacDebugAccessoryManagerSensor(coordinator),  # 🆕 Accessory config manager
-        EufyRobovacDebugRestConnectSensor(coordinator),       # 🆕 RestConnect status
     ]
     
-    # NEW: Add Investigation Status Sensor if investigation mode enabled
+    # Add Investigation Status Sensor if investigation mode enabled
     if coordinator.investigation_mode:
         entities.append(EufyRobovacInvestigationStatusSensor(coordinator))
         _LOGGER.info("🔍 Investigation Status Sensor added - Investigation Mode active")
@@ -53,18 +52,18 @@ async def async_setup_entry(
                 _LOGGER.debug("🔧 Added dynamic accessory sensor: %s", sensor_config.get('name'))
         
         investigation_status = " + Investigation Mode" if coordinator.investigation_mode else ""
-        _LOGGER.info("🏭 Setting up %d total sensors (%d core + %d accessories)%s with RestConnect for device %s", 
-                    len(entities), 6 + (1 if coordinator.investigation_mode else 0), len(accessory_sensors), investigation_status, coordinator.device_id)
+        _LOGGER.info("🏭 Setting up %d total sensors (%d core + %d accessories)%s with DPS-only for device %s", 
+                    len(entities), 5 + (1 if coordinator.investigation_mode else 0), len(accessory_sensors), investigation_status, coordinator.device_id)
     
     except Exception as e:
         _LOGGER.error("❌ Failed to load accessory sensors: %s", e)
-        _LOGGER.info("🏭 Setting up %d core sensors only with RestConnect for device %s", len(entities), coordinator.device_id)
+        _LOGGER.info("🏭 Setting up %d core sensors only with DPS-only for device %s", len(entities), coordinator.device_id)
     
     async_add_entities(entities)
 
 
 class EufyRobovacDebugBaseSensor(CoordinatorEntity, SensorEntity):
-    """Base sensor for Eufy Robovac Data Logger."""
+    """Base sensor for Eufy Robovac Data Logger - DPS Only."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator, sensor_type: str) -> None:
         """Initialize the sensor."""
@@ -77,11 +76,11 @@ class EufyRobovacDebugBaseSensor(CoordinatorEntity, SensorEntity):
             identifiers={(DOMAIN, self.device_id)},
             name=f"Eufy Robovac Debug {self.device_id}",
             manufacturer="Eufy",
-            model="Robovac (Debug + RestConnect + Investigation)",
-            sw_version="Debug v2.1.0 - RestConnect + Accessory Config + Investigation Mode",
+            model="Robovac (DPS Only + Investigation)",
+            sw_version="Debug v3.0.0 - DPS Only + Accessory Config + Investigation Mode",
         )
         
-        _LOGGER.debug("🔧 Initialized %s sensor for device %s with RestConnect", sensor_type, self.device_id)
+        _LOGGER.debug("🔧 Initialized %s sensor for device %s with DPS-only", sensor_type, self.device_id)
 
     @property
     def available(self) -> bool:
@@ -90,7 +89,7 @@ class EufyRobovacDebugBaseSensor(CoordinatorEntity, SensorEntity):
 
 
 class EufyRobovacInvestigationStatusSensor(EufyRobovacDebugBaseSensor):
-    """NEW: Investigation Mode Status and Control Sensor."""
+    """Investigation Mode Status and Control Sensor."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the investigation status sensor."""
@@ -108,7 +107,7 @@ class EufyRobovacInvestigationStatusSensor(EufyRobovacDebugBaseSensor):
         
         if status.get("baseline_captured", False):
             return "Baseline Captured"
-        elif status.get("key180_available", False):
+        elif status.get("available_keys"):
             return "Monitoring"
         else:
             return "Waiting for Data"
@@ -117,51 +116,34 @@ class EufyRobovacInvestigationStatusSensor(EufyRobovacDebugBaseSensor):
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return investigation status and controls."""
         if not self.coordinator.investigation_mode:
-            return {
-                "investigation_mode": False,
-                "status": "Investigation mode not enabled",
-                "purpose": "🔍 Key 180 comprehensive analysis would be available if enabled"
-            }
+            return {"status": "Investigation mode not enabled"}
         
         status = self.coordinator.get_investigation_status()
         
         attrs = {
-            "investigation_mode": True,
+            "version": status.get("version", "4.0_multi_key"),
             "session_id": status.get("session_id"),
             "baseline_captured": status.get("baseline_captured", False),
-            "key180_available": status.get("key180_available", False),
-            "investigation_directory": status.get("investigation_directory"),
-            "update_count": status.get("update_count", 0),
-            "last_update": self.coordinator.data.get("last_update"),
-            "purpose": "🔍 Key 180 Investigation Mode - Comprehensive byte analysis for accessory wear detection",
+            "current_mode": status.get("current_mode", "monitoring"),
+            "total_updates": status.get("total_updates", 0),
+            "meaningful_logs": status.get("meaningful_logs", 0),
+            "efficiency_percentage": status.get("efficiency_percentage", 0),
+            "monitored_keys_count": status.get("monitored_keys_count", 0),
+            "available_keys": status.get("available_keys", []),
+            "missing_keys": status.get("missing_keys", []),
+            "data_source": "🔍 DPS Only - Enhanced Key 180 + Multi-Key Analysis",
         }
         
-        # Add Key 180 data info
-        if "180" in self.coordinator.raw_data:
-            key180_data = self.coordinator.raw_data["180"]
-            attrs["key180_data_length"] = len(key180_data)
-            attrs["key180_preview"] = f"{key180_data[:20]}..." if len(key180_data) > 20 else key180_data
-            attrs["key180_status"] = "✅ Available"
+        # Add Key 180 specific information
+        if "180" in attrs["available_keys"]:
+            attrs["key180_status"] = "✅ Available for analysis"
+            attrs["position_15_status"] = "97% = Brush Guard (CONFIRMED)"
         else:
-            attrs["key180_status"] = "❌ Missing"
-            attrs["key180_data_length"] = 0
+            attrs["key180_status"] = "❌ Not available"
+            attrs["position_15_status"] = "Waiting for Key 180 data"
         
-        # Status indicators and instructions
-        if status.get("baseline_captured", False):
-            attrs["status_emoji"] = "🎯"
-            attrs["next_step"] = "Run cleaning cycle, then use post-cleaning capture service"
-            attrs["workflow_status"] = "Ready for cleaning cycle testing"
-        elif status.get("key180_available", False):
-            attrs["status_emoji"] = "🔍" 
-            attrs["next_step"] = "Use baseline capture service to start investigation"
-            attrs["workflow_status"] = "Ready to capture baseline"
-        else:
-            attrs["status_emoji"] = "⏳"
-            attrs["next_step"] = "Wait for Key 180 data to become available"
-            attrs["workflow_status"] = "Waiting for data"
-        
-        # Investigation workflow instructions
-        attrs["workflow_instructions"] = [
+        # Workflow guidance
+        attrs["workflow_steps"] = [
             "1. Capture baseline before cleaning",
             "2. Run a room cleaning cycle", 
             "3. Capture post-cleaning data after docking",
@@ -187,7 +169,7 @@ class EufyRobovacInvestigationStatusSensor(EufyRobovacDebugBaseSensor):
 
 
 class EufyRobovacDebugBatterySensor(EufyRobovacDebugBaseSensor):
-    """Battery sensor for debugging Key 163 - KEPT AS WORKING."""
+    """Battery sensor for debugging Key 163 - WORKING."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the battery sensor."""
@@ -209,38 +191,33 @@ class EufyRobovacDebugBatterySensor(EufyRobovacDebugBaseSensor):
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
-        raw_163 = self.coordinator.raw_data.get("163")
         data_source = self.coordinator.data.get("data_source", "Unknown")
+        raw_data_count = self.coordinator.data.get("raw_data_count", 0)
         
         attrs = {
-            "raw_key_163": raw_163,
-            "data_source": f"{data_source} - Key 163",
-            "reliability": "✅ 100% Accurate",
+            "data_source": data_source,
+            "connection_mode": "📱 DPS Only (Basic Login)",
+            "key_used": "163",
+            "confirmed_working": True,
+            "accuracy": "100% confirmed from Android app",
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
+            "raw_keys_available": raw_data_count,
         }
         
-        # Add battery status with emoji indicators
-        battery = self.coordinator.data.get("battery")
-        if battery is not None:
-            if battery <= 10:
-                attrs["battery_status"] = "🔴 Critical"
-                attrs["battery_emoji"] = "🪫"
-            elif battery <= 20:
-                attrs["battery_status"] = "🟠 Low" 
-                attrs["battery_emoji"] = "🔋"
-            elif battery <= 50:
-                attrs["battery_status"] = "🟡 Medium"
-                attrs["battery_emoji"] = "🔋"
-            else:
-                attrs["battery_status"] = "🟢 High"
-                attrs["battery_emoji"] = "🔋"
+        # Add investigation mode connection
+        if self.coordinator.investigation_mode:
+            attrs["investigation_note"] = "🔍 Key 163 is confirmed working and monitored in investigation mode"
+        
+        # Add DPS-only benefit indicator
+        attrs["dps_benefits"] = "🎯 Direct access to robovac data without REST API interference"
+        attrs["performance"] = "⚡ Fast, reliable DPS data extraction"
         
         return attrs
 
 
 class EufyRobovacDebugCleanSpeedSensor(EufyRobovacDebugBaseSensor):
-    """Clean speed sensor for debugging Key 158 - KEPT AS WORKING."""
+    """Clean speed sensor for debugging Key 158 - WORKING."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the clean speed sensor."""
@@ -250,145 +227,165 @@ class EufyRobovacDebugCleanSpeedSensor(EufyRobovacDebugBaseSensor):
 
     @property
     def native_value(self) -> Optional[str]:
-        """Return the clean speed."""
+        """Return the cleaning speed."""
         speed = self.coordinator.data.get("clean_speed")
-        if speed is not None:
-            _LOGGER.debug("⚡ Clean speed sensor value: %s", speed)
+        if speed:
+            _LOGGER.debug("🌪️ Clean speed sensor value: %s", speed)
         return speed
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
-        raw_158 = self.coordinator.raw_data.get("158")
         data_source = self.coordinator.data.get("data_source", "Unknown")
-        from .const import CLEAN_SPEED_NAMES
+        raw_data_count = self.coordinator.data.get("raw_data_count", 0)
         
         attrs = {
-            "raw_key_158": raw_158,
-            "available_speeds": CLEAN_SPEED_NAMES,
-            "speed_mapping": {i: speed for i, speed in enumerate(CLEAN_SPEED_NAMES)},
-            "data_source": f"{data_source} - Key 158",
-            "reliability": "✅ Accurate",
+            "data_source": data_source,
+            "connection_mode": "📱 DPS Only (Basic Login)",
+            "key_used": "158",
+            "confirmed_working": True,
+            "possible_values": "Standard, Medium, High",
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
+            "raw_keys_available": raw_data_count,
         }
         
-        # Add speed emoji indicators
-        speed = self.coordinator.data.get("clean_speed")
-        if speed == "quiet":
-            attrs["speed_emoji"] = "🐌"
-        elif speed == "standard":
-            attrs["speed_emoji"] = "🚶"
-        elif speed == "turbo":
-            attrs["speed_emoji"] = "🏃"
-        elif speed == "max":
-            attrs["speed_emoji"] = "🏃‍♂️💨"
+        # Add investigation mode connection
+        if self.coordinator.investigation_mode:
+            attrs["investigation_note"] = "🔍 Key 158 is confirmed working and monitored in investigation mode"
+        
+        # Add DPS-only benefit indicator
+        attrs["dps_benefits"] = "🎯 Direct access to robovac data without REST API interference"
+        attrs["performance"] = "⚡ Fast, reliable DPS data extraction"
         
         return attrs
 
 
 class EufyRobovacDebugRawDataSensor(EufyRobovacDebugBaseSensor):
-    """Raw data sensor for complete debugging - KEPT AS USEFUL."""
+    """Raw data sensor for debugging - shows key count."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the raw data sensor."""
         super().__init__(coordinator, "raw_data")
         self._attr_name = f"Eufy Robovac Debug Raw Data"
-        self._attr_icon = "mdi:code-json"
+        self._attr_icon = "mdi:database"
 
     @property
-    def native_value(self) -> str:
+    def native_value(self) -> int:
         """Return the number of raw data keys."""
-        count = len(self.coordinator.raw_data)
-        _LOGGER.debug("📋 Raw data sensor: %d keys available", count)
-        return str(count)
+        raw_count = self.coordinator.data.get("raw_data_count", 0)
+        _LOGGER.debug("📊 Raw data sensor value: %d keys", raw_count)
+        return raw_count
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return all raw data as attributes."""
+        """Return raw data details."""
         data_source = self.coordinator.data.get("data_source", "Unknown")
+        raw_data_count = self.coordinator.data.get("raw_data_count", 0)
+        
+        # Get monitored keys status
+        found_keys = self.coordinator.data.get("monitored_keys_found", [])
+        monitored_total = len(MONITORED_KEYS)
         
         attrs = {
-            "total_keys": len(self.coordinator.raw_data),
-            "raw_data_keys": list(self.coordinator.raw_data.keys()),
             "data_source": data_source,
+            "connection_mode": "📱 DPS Only (Basic Login)",
+            "total_raw_keys": raw_data_count,
+            "monitored_keys_found": len(found_keys),
+            "monitored_keys_total": monitored_total,
+            "monitoring_coverage": f"{len(found_keys)}/{monitored_total}",
+            "found_keys": found_keys,
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
-            "data_emoji": "🌐" if "RestConnect" in data_source else "📱",
-            "purpose": f"Complete API data from {data_source}",
         }
         
-        # Add investigation mode indicator
-        if self.coordinator.investigation_mode:
-            attrs["investigation_mode"] = "🔍 Active - Key 180 being logged"
-            attrs["key180_available"] = "180" in self.coordinator.raw_data
+        # Add Key 180 specific status
+        if "180" in found_keys:
+            attrs["key180_status"] = "✅ Available - Ready for accessory analysis"
+        else:
+            attrs["key180_status"] = "❌ Not available"
         
-        # Add first 15 characters of each raw value for debugging (prevent overflow)
-        for key, value in list(self.coordinator.raw_data.items())[:20]:  # Limit to prevent overflow
-            if isinstance(value, str) and len(value) > 20:
-                attrs[f"raw_{key}_preview"] = f"{value[:15]}..."
-            else:
-                attrs[f"raw_{key}"] = value
+        # Add investigation mode details
+        if self.coordinator.investigation_mode:
+            attrs["investigation_mode"] = "🔍 Enhanced Smart Multi-Key Investigation v4.0"
+            attrs["investigation_note"] = f"Monitoring {monitored_total} keys for comprehensive analysis"
+        
+        # Performance indicators
+        if raw_data_count > 0:
+            attrs["status"] = "🟢 Receiving data"
+            attrs["performance"] = "⚡ DPS connection working"
+        else:
+            attrs["status"] = "🔴 No data"
+            attrs["performance"] = "❌ Check DPS connection"
+        
+        # Add DPS-only benefits
+        attrs["dps_benefits"] = "🎯 Direct robovac access - no REST API blocking"
         
         return attrs
 
 
 class EufyRobovacDebugMonitoringSensor(EufyRobovacDebugBaseSensor):
-    """Monitoring sensor showing which keys are found/missing - KEPT AS USEFUL."""
+    """Monitoring sensor for tracking key coverage."""
 
     def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
         """Initialize the monitoring sensor."""
         super().__init__(coordinator, "monitoring")
         self._attr_name = f"Eufy Robovac Debug Monitoring"
-        self._attr_icon = "mdi:monitor-eye"
+        self._attr_icon = "mdi:monitor-dashboard"
 
     @property
     def native_value(self) -> str:
-        """Return monitoring summary."""
-        found = len(self.coordinator.data.get("monitored_keys_found", []))
-        total = len(MONITORED_KEYS)
-        coverage = f"{found}/{total}"
-        _LOGGER.debug("👀 Monitoring sensor: %s keys coverage", coverage)
-        return coverage
+        """Return monitoring status."""
+        found_keys = self.coordinator.data.get("monitored_keys_found", [])
+        total_keys = len(MONITORED_KEYS)
+        return f"{len(found_keys)}/{total_keys}"
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return monitoring details."""
-        found_keys = self.coordinator.data.get("monitored_keys_found", [])
-        missing_keys = self.coordinator.data.get("monitored_keys_missing", [])
-        coverage_pct = round((len(found_keys) / len(MONITORED_KEYS)) * 100, 1) if MONITORED_KEYS else 0
         data_source = self.coordinator.data.get("data_source", "Unknown")
+        found_keys = self.coordinator.data.get("monitored_keys_found", [])
+        total_keys = len(MONITORED_KEYS)
+        
+        # Calculate coverage percentage
+        coverage = (len(found_keys) / total_keys * 100) if total_keys > 0 else 0
         
         attrs = {
-            "monitored_keys_total": len(MONITORED_KEYS),
-            "monitored_keys_found_count": len(found_keys),
-            "monitored_keys_missing_count": len(missing_keys),
-            "monitored_keys_found": found_keys,
-            "monitored_keys_missing": missing_keys,
-            "coverage_percentage": coverage_pct,
             "data_source": data_source,
+            "connection_mode": "📱 DPS Only (Basic Login)",
+            "monitored_keys_found": len(found_keys),
+            "monitored_keys_total": total_keys,
+            "coverage_percentage": round(coverage, 1),
+            "found_keys": found_keys,
+            "missing_keys": [key for key in MONITORED_KEYS if key not in found_keys],
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count"),
-            "purpose": f"Track hardcoded key discovery via {data_source}",
         }
         
-        # Add investigation mode Key 180 tracking
+        # Priority key status
+        priority_keys = {"163": "Battery", "158": "Clean Speed", "180": "Accessories"}
+        for key, name in priority_keys.items():
+            attrs[f"key_{key}_status"] = "✅ Found" if key in found_keys else "❌ Missing"
+            attrs[f"key_{key}_name"] = name
+        
+        # Investigation mode status
         if self.coordinator.investigation_mode:
-            attrs["investigation_mode"] = "🔍 Active"
-            attrs["key180_tracking"] = "✅ Enabled" if "180" in found_keys else "❌ Key 180 Missing"
+            attrs["investigation_mode"] = "🔍 Enhanced Smart Multi-Key Investigation v4.0"
+            attrs["investigation_coverage"] = f"Monitoring {total_keys} keys for analysis"
         
-        # Add coverage emoji
-        if coverage_pct >= 90:
-            attrs["coverage_emoji"] = "🟢"
-        elif coverage_pct >= 70:
-            attrs["coverage_emoji"] = "🟡"
+        # Performance status
+        if coverage >= 80:
+            attrs["status"] = "🟢 Excellent coverage"
+            attrs["performance"] = "🚀 Most keys available"
+        elif coverage >= 50:
+            attrs["status"] = "🟡 Good coverage"
+            attrs["performance"] = "⚡ Key data flowing"
         else:
-            attrs["coverage_emoji"] = "🔴"
+            attrs["status"] = "🔴 Poor coverage"
+            attrs["performance"] = "❌ Check DPS connection"
         
-        # Add status for each monitored key with emoji indicators
-        for key in MONITORED_KEYS:
-            status = "✅ PRESENT" if key in found_keys else "❌ MISSING"
-            attrs[f"key_{key}_status"] = status
+        # Add DPS-only benefits
+        attrs["dps_benefits"] = "🎯 Direct access to all robovac keys without REST blocking"
         
         return attrs
 
@@ -412,6 +409,7 @@ class EufyRobovacDebugAccessoryManagerSensor(EufyRobovacDebugBaseSensor):
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return accessory manager status."""
         accessory_sensors = self.coordinator.data.get("accessory_sensors", {})
+        data_source = self.coordinator.data.get("data_source", "Unknown")
         
         # Calculate status
         enabled_count = len([a for a in accessory_sensors.values() if a.get("enabled")])
@@ -419,6 +417,8 @@ class EufyRobovacDebugAccessoryManagerSensor(EufyRobovacDebugBaseSensor):
                              if a.get("configured_life", 100) <= a.get("threshold", 10)])
         
         attrs = {
+            "data_source": data_source,
+            "connection_mode": "📱 DPS Only (Basic Login)",
             "total_accessories": len(accessory_sensors),
             "enabled_accessories": enabled_count,
             "low_life_accessories": low_life_count,
@@ -450,78 +450,8 @@ class EufyRobovacDebugAccessoryManagerSensor(EufyRobovacDebugBaseSensor):
             attrs["status_emoji"] = "⚪"
             attrs["status"] = "No accessories configured"
         
-        return attrs
-
-
-class EufyRobovacDebugRestConnectSensor(EufyRobovacDebugBaseSensor):
-    """NEW: RestConnect status and connection information sensor."""
-
-    def __init__(self, coordinator: EufyX10DebugCoordinator) -> None:
-        """Initialize the RestConnect sensor."""
-        super().__init__(coordinator, "restconnect")
-        self._attr_name = f"Eufy Robovac RestConnect Status"
-        self._attr_icon = "mdi:api"
-
-    @property
-    def native_value(self) -> str:
-        """Return RestConnect connection status."""
-        data_source = self.coordinator.data.get("data_source", "Unknown")
-        if "RestConnect" in data_source:
-            return "Connected"
-        else:
-            return "Fallback Mode"
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return RestConnect status details."""
-        data_source = self.coordinator.data.get("data_source", "Unknown")
-        
-        # Base attributes
-        attrs = {
-            "data_source": data_source,
-            "connection_mode": "🌐 RestConnect" if "RestConnect" in data_source else "📱 Basic Login",
-            "last_update": self.coordinator.data.get("last_update"),
-            "update_count": self.coordinator.data.get("update_count"),
-            "purpose": "Monitor REST API connection status",
-        }
-        
-        # Add investigation mode indicator
-        if self.coordinator.investigation_mode:
-            attrs["investigation_mode"] = "🔍 Active - Enhanced data collection for Key 180 analysis"
-        
-        # Get RestConnect detailed info if available
-        try:
-            rest_info = self.coordinator.get_rest_connection_info()
-            attrs.update({
-                "rest_connected": rest_info.get('is_connected', False),
-                "rest_last_update": rest_info.get('last_update'),
-                "rest_update_count": rest_info.get('update_count', 0),
-                "rest_keys_received": rest_info.get('keys_received', 0),
-                "rest_has_auth": rest_info.get('has_auth_token', False),
-                "rest_has_user_token": rest_info.get('has_user_center_token', False),
-                "rest_has_gtoken": rest_info.get('has_gtoken', False),
-                "rest_device_id": rest_info.get('device_id'),
-                "rest_user_id": rest_info.get('user_id'),
-            })
-            
-            # API endpoints status
-            endpoints = rest_info.get('api_endpoints_available', {})
-            for endpoint, available in endpoints.items():
-                attrs[f"endpoint_{endpoint}"] = "✅ Available" if available else "❌ Not Available"
-            
-        except Exception as e:
-            attrs["rest_error"] = str(e)
-            attrs["rest_connected"] = False
-        
-        # Status indicators
-        if "RestConnect" in data_source:
-            attrs["status_emoji"] = "🟢"
-            attrs["status"] = "Using advanced REST API endpoints"
-            attrs["performance"] = "🚀 Enhanced data collection"
-        else:
-            attrs["status_emoji"] = "🟡"
-            attrs["status"] = "Using basic login fallback"
-            attrs["performance"] = "⚡ Standard data collection"
+        # Add DPS-only benefits
+        attrs["dps_benefits"] = "🎯 Direct accessory data extraction from DPS keys"
         
         return attrs
 
@@ -529,63 +459,50 @@ class EufyRobovacDebugRestConnectSensor(EufyRobovacDebugBaseSensor):
 class EufyRobovacDynamicAccessorySensor(EufyRobovacDebugBaseSensor):
     """Dynamic accessory sensor created from JSON configuration."""
 
-    def __init__(self, coordinator: EufyX10DebugCoordinator, sensor_id: str, sensor_config: Dict[str, Any]) -> None:
-        """Initialize dynamic accessory sensor."""
-        super().__init__(coordinator, f"accessory_{sensor_id}")
-        
-        self.accessory_id = sensor_id
+    def __init__(self, coordinator: EufyX10DebugCoordinator, accessory_id: str, sensor_config: Dict[str, Any]) -> None:
+        """Initialize the dynamic accessory sensor."""
+        super().__init__(coordinator, f"accessory_{accessory_id}")
+        self.accessory_id = accessory_id
         self.sensor_config = sensor_config
         
-        self._attr_name = f"Eufy Robovac {sensor_config.get('name', sensor_id)}"
+        self._attr_name = f"Eufy Robovac {sensor_config.get('name', accessory_id)}"
+        self._attr_device_class = SensorDeviceClass.BATTERY if 'battery' in sensor_config.get('name', '').lower() else None
         self._attr_native_unit_of_measurement = PERCENTAGE
         self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_icon = self._get_accessory_icon(sensor_id)
-
-    def _get_accessory_icon(self, sensor_id: str) -> str:
-        """Get appropriate icon for accessory type."""
-        icon_map = {
-            "rolling_brush": "mdi:broom",
-            "side_brush": "mdi:brush",
-            "filter": "mdi:air-filter",
-            "mopping_cloth": "mdi:water",
-            "cleaning_tray": "mdi:tray",
-            "robovac_sensors": "mdi:radar",
-            "brush_guard": "mdi:shield-outline",
-            "water_tank_level": "mdi:water-percent",
-        }
-        return icon_map.get(sensor_id, "mdi:cog")
+        self._attr_icon = sensor_config.get('icon', 'mdi:wrench')
 
     @property
     def native_value(self) -> Optional[int]:
         """Return the accessory life percentage."""
         accessory_data = self.coordinator.data.get("accessory_sensors", {}).get(self.accessory_id, {})
+        configured_life = accessory_data.get("configured_life", 100)
         
-        # Use detected value if available, otherwise configured value
-        detected = accessory_data.get("detected_value")
-        configured = accessory_data.get("configured_life", 100)
+        # Use detected value if available and accurate, otherwise configured
+        detected_value = accessory_data.get("detected_value")
+        if detected_value is not None:
+            accuracy = accessory_data.get("detection_accuracy", 0)
+            if accuracy and accuracy >= 80:  # Use detected if highly accurate
+                return detected_value
         
-        value = detected if detected is not None else configured
-        
-        if value is not None:
-            _LOGGER.debug("🔧 %s sensor value: %d%%", self.sensor_config.get('name'), value)
-        
-        return value
+        return configured_life
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
-        """Return accessory-specific attributes."""
+        """Return accessory details."""
         accessory_data = self.coordinator.data.get("accessory_sensors", {}).get(self.accessory_id, {})
         data_source = self.coordinator.data.get("data_source", "Unknown")
         
         attrs = {
             "accessory_name": self.sensor_config.get('name'),
             "description": self.sensor_config.get('description', ''),
+            "data_source": data_source,
+            "connection_mode": "📱 DPS Only (Basic Login)",
             "configured_life": accessory_data.get("configured_life", 100),
             "detected_value": accessory_data.get("detected_value"),
             "hours_remaining": accessory_data.get("hours_remaining", 0),
             "max_hours": accessory_data.get("max_hours", 0),
             "replacement_threshold": accessory_data.get("threshold", 10),
-            "data_source": f"{data_source} - Key {accessory_data.get('key')}, Byte {accessory_data.get('byte_position')}",
+            "data_key": f"Key {accessory_data.get('key')}, Byte {accessory_data.get('byte_position')}",
             "enabled": accessory_data.get("enabled", True),
             "notes": accessory_data.get("notes", ""),
             "last_updated": accessory_data.get("last_updated"),
@@ -627,10 +544,7 @@ class EufyRobovacDynamicAccessorySensor(EufyRobovacDebugBaseSensor):
             attrs["detection_accuracy"] = "⚪ Not detected"
             attrs["detection_difference"] = "N/A"
         
-        # Add RestConnect benefit indicator
-        if "RestConnect" in data_source:
-            attrs["api_benefits"] = "🌐 Enhanced accessory data from REST endpoints"
-        else:
-            attrs["api_benefits"] = "📱 Basic DPS data extraction"
+        # Add DPS-only benefits
+        attrs["dps_benefits"] = "🎯 Direct accessory data from DPS keys without REST interference"
         
         return attrs
