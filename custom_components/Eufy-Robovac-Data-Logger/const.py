@@ -5,27 +5,36 @@ DOMAIN = "eufy-robovac-data-logger"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password" 
 CONF_DEBUG_MODE = "debug_mode"
-CONF_INVESTIGATION_MODE = "investigation_mode"  # NEW: For Key 180 deep analysis
+CONF_INVESTIGATION_MODE = "investigation_mode"  # NEW: For comprehensive multi-key deep analysis
 
 # Update interval in seconds - REDUCED for better RestConnect performance
 UPDATE_INTERVAL = 10
 
-# Data keys we want to monitor based on NEW Android app research
+# Data keys we want to monitor based on REAL Android app data from live system
+# Updated with actual key data that contains substantial information (Base64/Numeric)
 MONITORED_KEYS = [
-    "163",  # Battery (NEW Android App - 100% accuracy)
-    "167",  # Water tank data (Key 167, Byte 4 - 82% accuracy)
-    "177",  # Alternative water tank source
-    "178",  # Real-time data source
-    "168",  # Accessories status
-    "153",  # Work status/mode
-    "152",  # Play/pause commands
-    "158",  # Clean speed settings
-    "154",  # Cleaning parameters
-    "155",  # Direction controls
-    "160",  # Find robot
-    "173",  # Go home commands
-    "180",  # Accessory data (from existing research) - PRIMARY INVESTIGATION TARGET
-    "164",  # Alternative water tank (from existing research)
+    "152",  # Base64 data - possible accessory info
+    "153",  # Base64 data - possible work status
+    "154",  # Large Base64 - possible cleaning parameters  
+    "157",  # Base64 data - possible configuration
+    "158",  # Numeric value (3) - likely speed/mode
+    "161",  # Numeric value (50) - POSSIBLE WATER TANK!
+    "162",  # Base64 data - possible runtime info
+    "163",  # Numeric value (93) - POSSIBLE BATTERY!
+    "164",  # Base64 data - possible accessory info
+    "165",  # Large Base64 - room/location data?
+    "166",  # Base64 data - possible settings
+    "167",  # Base64 data - possible accessory wear
+    "168",  # Large Base64 - comprehensive accessory data
+    "169",  # Huge Base64 (260 chars) - device info/config
+    "170",  # Base64 data - possible status
+    "172",  # Base64 data - possible commands
+    "173",  # Large Base64 - possible navigation/mapping
+    "176",  # Base64 data (112 chars) - possible maintenance
+    "177",  # Base64 data - alternative data source
+    "178",  # Base64 data - real-time info
+    "179",  # Base64 data - possible consumables
+    "180",  # Accessory data (CONFIRMED working) - PRIMARY INVESTIGATION TARGET
 ]
 
 # RestConnect specific keys (may be available via REST endpoints)
@@ -45,130 +54,59 @@ RESTCONNECT_ENHANCED_KEYS = [
 # Combined monitoring (traditional + RestConnect enhanced)
 ALL_MONITORED_KEYS = MONITORED_KEYS + RESTCONNECT_ENHANCED_KEYS
 
-# INVESTIGATION MODE CONSTANTS - NEW
+# INVESTIGATION MODE CONSTANTS - UPDATED for multi-key analysis
 INVESTIGATION_CONFIG = {
-    "primary_target_key": "180",
-    "capture_frequency": "every_update",  # Capture Key 180 on every update
+    "primary_target_key": "180",  # Keep 180 as primary since it's confirmed working
+    "multi_key_targets": MONITORED_KEYS,  # All keys get same analysis treatment
+    "capture_frequency": "every_update",  # Capture ALL monitored keys on every update
     "baseline_timeout_minutes": 30,  # Wait 30 min max for baseline
     "post_cleaning_detection_window_minutes": 10,  # Look for changes within 10 min after cleaning
     "significant_change_threshold": 3,  # Changes of 1-3 are significant for wear detection
-    "accessory_value_range": (1, 100),  # Valid range for accessory percentages
-    "known_accessory_positions": [5, 37, 75, 95, 125, 146, 228],  # From existing research
-    "investigation_file_retention_days": 30,  # Keep investigation files for 30 days
+    "accessory_value_range": (1, 100),  # Valid range for percentage values
+    "water_tank_candidates": ["161", "167", "177", "179"],  # Keys likely to contain water tank data
+    "battery_candidates": ["163", "162", "168"],  # Keys likely to contain battery data
+    "accessory_candidates": ["164", "165", "168", "176", "179", "180"],  # Keys likely to contain accessory wear
 }
 
-# INVESTIGATION MODE BYTE POSITIONS - Enhanced from your research
-KEY_180_KNOWN_POSITIONS = {
-    5: {
-        "name": "Mopping Cloth",
-        "description": "Mopping attachment for wet cleaning",
-        "confidence": "medium",
-        "current_detected": "24%",
-        "notes": "Shows 24% but needs verification against app"
-    },
-    37: {
-        "name": "Side Brush", 
-        "description": "Edge cleaning brush",
-        "confidence": "medium",
-        "current_detected": "1%",
-        "notes": "Shows 1% but needs verification - likely wrong"
-    },
-    75: {
-        "name": "Cleaning Tray",
-        "description": "Dust collection tray",
-        "confidence": "low",
-        "current_detected": "96%",
-        "notes": "Shows 96% - verify if this is correct"
-    },
-    95: {
-        "name": "Cliff/Bump Sensors",
-        "description": "Navigation sensors",
-        "confidence": "low",
-        "current_detected": "255 (0xFF)",
-        "notes": "Shows 255 - likely status flag, not percentage"
-    },
-    125: {
-        "name": "Brush Guard",
-        "description": "Protective guard for rolling brush",
-        "confidence": "low", 
-        "current_detected": "98%",
-        "notes": "Shows 98% - needs verification"
-    },
-    146: {
-        "name": "Rolling Brush",
-        "description": "Main cleaning brush",
-        "confidence": "medium",
-        "current_detected": "32%",
-        "notes": "Shows 32% but user expects 99% - likely wrong position"
-    },
-    228: {
-        "name": "Dust Filter",
-        "description": "Air filtration system", 
-        "confidence": "medium",
-        "current_detected": "12%",
-        "notes": "Shows 12% but user expects 99% - likely wrong position"
-    }
+# File patterns for investigation mode - UPDATED for multi-key
+INVESTIGATION_FILE_PATTERNS = {
+    "baseline": "multi_key_baseline_{timestamp}.json",
+    "post_cleaning": "multi_key_post_cleaning_{timestamp}.json", 
+    "monitoring": "multi_key_monitoring_{timestamp}.json",
+    "summary": "multi_key_session_summary_{session_id}.json",
+    "significant_change": "multi_key_significant_change_{timestamp}.json",
 }
 
-# Clean speed mappings (for Key 158)
-CLEAN_SPEED_NAMES = ["quiet", "standard", "turbo", "max"]
+# Debug monitoring keys (used for status sensors and debugging)
+DEBUG_MONITORING_KEYS = MONITORED_KEYS  # Same as monitored keys
 
-# Work status mappings (for Key 153)
+# Clean speed settings (for sensor parsing)
+CLEAN_SPEED_NAMES = {
+    0: "Quiet",
+    1: "Standard", 
+    2: "Turbo",
+    3: "Max",
+}
+
+# Work status mapping (for sensor parsing)
 WORK_STATUS_MAP = {
-    0: "standby",
-    1: "sleep", 
-    2: "fault",
-    3: "charging",
-    4: "fast_mapping",
-    5: "cleaning",
-    6: "remote_ctrl",
-    7: "go_home",
-    8: "cruising"
+    0: "Sleep",
+    1: "Cleaning", 
+    2: "Go Home",
+    3: "Charging",
+    4: "Pause",
+    5: "Error",
+    6: "Remote Control",
+    7: "Sleeping",
+    8: "Manual",
+    9: "Zone Cleaning",
+    10: "Spot Cleaning",
 }
 
-# Eufy X10 device models (focused on X10 series for debugging)
-EUFY_X10_MODELS = {
-    'T2351': 'X10 Pro Omni',
-    'T2320': 'X10 Pro',
-    'T2262': 'X8',
-    'T2261': 'X8 Hybrid',
-    'T2266': 'X8 Pro',
-    'T2276': 'X8 Pro SES',
-}
-
-# Data source descriptions for debugging
-KEY_DESCRIPTIONS = {
-    "163": "Battery Level (NEW Android App - 100% accuracy)",
-    "167": "Water Tank Level (NEW Android App - Key 167 Byte 4, 82% accuracy)",
-    "177": "Alternative Water Tank Source",
-    "178": "Real-time Data Source", 
-    "168": "Accessories Status",
-    "153": "Work Status/Mode",
-    "152": "Play/Pause Commands",
-    "158": "Clean Speed Settings",
-    "154": "Cleaning Parameters",
-    "155": "Direction Controls",
-    "160": "Find Robot",
-    "173": "Go Home Commands",
-    "180": "Accessory Data (PRIMARY INVESTIGATION TARGET)",  # Enhanced description
-    "164": "Alternative Water Tank (from existing research)",
-    # RestConnect enhanced descriptions
-    "181": "Enhanced Accessory Data 1 (RestConnect)",
-    "182": "Enhanced Accessory Data 2 (RestConnect)",
-    "183": "Enhanced Accessory Data 3 (RestConnect)",
-    "184": "Enhanced Accessory Data 4 (RestConnect)",
-    "185": "Enhanced Accessory Data 5 (RestConnect)",
-    "186": "Runtime Statistics (RestConnect)",
-    "187": "Maintenance Data (RestConnect)",
-    "188": "Consumable Status (RestConnect)",
-    "189": "Water Tank Detailed (RestConnect)",
-    "190": "Sensor Diagnostics (RestConnect)",
-}
-
-# RestConnect API endpoints
-RESTCONNECT_ENDPOINTS = {
+# API endpoints for RestConnect
+API_ENDPOINTS = {
     "device_data": "https://api.eufylife.com/v1/device/info",
-    "device_status": "https://api.eufylife.com/v1/device/status",
+    "device_status": "https://api.eufylife.com/v1/device/status", 
     "accessory_data": "https://api.eufylife.com/v1/device/accessory_info",
     "consumable_data": "https://api.eufylife.com/v1/device/consumable_status",
     "runtime_data": "https://api.eufylife.com/v1/device/runtime_info",
@@ -187,14 +125,16 @@ RESTCONNECT_BENEFITS = [
     "🎯 Fallback support to basic login if REST fails",
 ]
 
-# INVESTIGATION MODE BENEFITS - NEW
+# INVESTIGATION MODE BENEFITS - UPDATED for multi-key
 INVESTIGATION_BENEFITS = [
-    "🔍 Complete byte-by-byte analysis of Key 180 payload",
-    "📊 Structured JSON files for offline analysis",
-    "🎯 Before/after cleaning cycle comparison",
-    "🧮 Automatic change detection and significance scoring",
-    "📁 Organized data files for external tool analysis",
+    "🔍 Complete byte-by-byte analysis of ALL monitored keys",
+    "📊 Structured JSON files for offline analysis of each key",
+    "🎯 Before/after cleaning cycle comparison across all keys",
+    "🧮 Automatic change detection and significance scoring for each key",
+    "📁 Organized multi-key data files for external tool analysis",
     "🔬 Comprehensive metadata for research reproducibility",
+    "🔍 Water tank and battery location discovery across all keys",
+    "📈 Cross-key correlation analysis for data relationships",
 ]
 
 # Logging configuration
@@ -204,14 +144,16 @@ DEBUG_LOG_INTERVALS = {
     "first_updates_detailed": 1, # Only first update in detail (reduced from 3)
 }
 
-# INVESTIGATION LOGGING - NEW
+# INVESTIGATION LOGGING - UPDATED for multi-key
 INVESTIGATION_LOG_CONFIG = {
-    "log_every_update": True,  # Log Key 180 on every update in investigation mode
+    "log_every_update": True,  # Log ALL monitored keys on every update in investigation mode
     "create_session_files": True,  # Create organized session files
-    "include_hex_dump": True,  # Include complete hex dump in analysis
-    "include_context_keys": ["163", "167", "168", "158", "153"],  # Other keys to include for context
+    "include_hex_dump": True,  # Include complete hex dump in analysis for each key
+    "include_context_keys": MONITORED_KEYS,  # All monitored keys included for context
     "auto_detect_cleaning_cycles": True,  # Try to detect when cleaning starts/stops
     "comparison_sensitivity": 1,  # Detect changes as small as 1 byte difference
+    "cross_key_analysis": True,  # NEW: Compare changes across all keys
+    "percentage_search": True,  # NEW: Search for percentage values (1-100) in all keys
 }
 
 # Connection status indicators
@@ -222,5 +164,6 @@ CONNECTION_STATUS_EMOJIS = {
     "disconnected": "🔴",
     "fallback": "🟡",
     "error": "❌",
-    "investigation": "🔍",  # NEW: Investigation mode indicator
+    "investigation": "🔍",  # Investigation mode indicator
+    "multi_key": "🗂️",  # NEW: Multi-key analysis indicator
 }
