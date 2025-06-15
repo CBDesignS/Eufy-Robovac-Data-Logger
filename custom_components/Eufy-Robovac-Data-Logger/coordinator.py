@@ -185,12 +185,18 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             # Use ONLY basic login/DPS for data fetching
             if self._eufy_login:
                 try:
-                    await self._eufy_login.updateDevice()
-                    self.raw_data = self._eufy_login.raw_data.copy()
-                    self.parsed_data["data_source"] = "DPS Only (Basic Login)"
+                    # Get device data with DPS
+                    device_data = await self._eufy_login.getMqttDevice(self.device_id)
                     
-                    if self._should_do_detailed_logging():
-                        self._debug_log("📱 Data fetched via DPS-only (basic login)", "debug")
+                    if device_data and 'dps' in device_data:
+                        self.raw_data = device_data['dps'].copy()
+                        self.parsed_data["data_source"] = "DPS Only (Basic Login)"
+                        
+                        if self._should_do_detailed_logging():
+                            self._debug_log(f"📱 Data fetched via DPS-only: {len(self.raw_data)} keys", "debug")
+                    else:
+                        self._debug_log("❌ No DPS data in device response", "error")
+                        self.raw_data = {}
                         
                 except Exception as login_error:
                     self._debug_log(f"❌ DPS login failed: {login_error}", "error")
