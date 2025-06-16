@@ -14,7 +14,6 @@ class EufyApi:
         self.session = None
         self.user_info = None
         self._cloud_devices = []  # Cache cloud devices from initial setup
-        self._device_dps_cache = {}  # Cache DPS data to avoid repeated calls
 
     async def login(self, validate_only: bool = False) -> dict[str, Any]:
         """
@@ -130,77 +129,67 @@ class EufyApi:
 
     async def get_device_list(self, device_sn: Optional[str] = None) -> list[dict[str, Any]]:
         """
-        Get device DPS data - PURE DPS IMPLEMENTATION, NO REST CALLS.
-        This method is called by coordinator updates and must be DPS-only.
-        
-        CRITICAL: This method no longer makes REST API calls to avoid DNS timeouts.
-        It now extracts DPS data from MQTT/device connection or cached data.
+        Get device list with DPS data - RESTORED WORKING VERSION with better error handling.
+        This was the original working method that returns real DPS data from the cloud.
         """
         try:
-            # If requesting specific device and we have cached DPS data, return it
-            if device_sn and device_sn in self._device_dps_cache:
-                cached_device = self._device_dps_cache[device_sn]
-                _LOGGER.debug(f'Returning cached DPS data for device {device_sn}')
-                return [cached_device]
-            
-            # For coordinator updates, we should get DPS data from MQTT connection
-            # instead of making REST calls. This requires the MQTT connection to provide DPS data.
-            # The actual DPS data should come from the MQTT connection established by MqttConnect
-            
-            # Return placeholder structure that matches expected format
-            # Real DPS data will come from MQTT connection in MqttConnect.updateDevice()
-            devices = []
-            
-            if device_sn:
-                # Single device request - return minimal structure
-                # DPS data will be populated by MQTT connection
-                device_data = {
-                    'device_sn': device_sn,
-                    'dps': {},  # DPS data populated by MQTT
-                    'is_online': True
-                }
-                devices = [device_data]
-                
-                # Cache this device structure
-                self._device_dps_cache[device_sn] = device_data
-            else:
-                # Multiple devices request - return all known devices from cloud cache
-                for cloud_device in self._cloud_devices:
-                    device_id = cloud_device.get('id', cloud_device.get('device_sn', ''))
-                    if device_id:
-                        device_data = {
-                            'device_sn': device_id,
-                            'dps': {},  # DPS data populated by MQTT
-                            'is_online': cloud_device.get('is_online', True)
-                        }
-                        devices.append(device_data)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    'https://aiot-clean-api-pr.eufylife.com/app/devicerelation/get_device_list',
+                    headers={
+                        'user-agent': 'EufyHome-Android-3.1.3-753',
+                        'openudid': self.openudid,
+                        'os-version': 'Android',
+                        'model-type': 'PHONE',
+                        'app-name': 'eufy_home',
+                        'x-auth-token': self.user_info['user_center_token'],
+                        'gtoken': self.user_info['gtoken'],
+                        'content-type': 'application/json; charset=UTF-8',
+                    },
+                    json={'attribute': 3},
+                    timeout=aiohttp.ClientTimeout(total=15)  # Better timeout handling
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        devices = data.get('data', {}).get('devices')
+                        if not devices:
+                            _LOGGER.warning('No devices found in response')
+                            return []
                         
-                        # Cache this device structure
-                        self._device_dps_cache[device_id] = device_data
-            
-            _LOGGER.debug(f'get_device_list: Returning {len(devices)} devices (DPS-only mode)')
-            return devices
-            
+                        # Extract device array with DPS data (original working pattern)
+                        device_array = []
+                        for device_wrapper in devices:
+                            if 'device' in device_wrapper:
+                                device = device_wrapper['device']
+                                device_array.append(device)
+                        
+                        # Filter by device_sn if specified
+                        if device_sn:
+                            found_device = next((device for device in device_array if device.get('device_sn') == device_sn), None)
+                            if found_device:
+                                _LOGGER.debug(f'Found device {device_sn} with {len(found_device.get("dps", {}))} DPS keys')
+                                return found_device
+                            else:
+                                _LOGGER.warning(f'Device {device_sn} not found')
+                                return None
+                        
+                        _LOGGER.debug(f'Found {len(device_array)} devices with DPS data')
+                        return device_array
+                    else:
+                        _LOGGER.error(f'get_device_list failed with status {response.status}')
+                        return []
+                        
+        except asyncio.TimeoutError:
+            _LOGGER.error('get_device_list: Request timeout - network connectivity issue')
+            return []
+        except aiohttp.ClientError as e:
+            _LOGGER.error(f'get_device_list: Network error - {e}')
+            return []
         except Exception as e:
             _LOGGER.error(f'get_device_list error: {e}')
             return []
 
-    def update_device_dps(self, device_sn: str, dps_data: dict) -> None:
-        """
-        Update DPS data for a device (called by MQTT connection).
-        This allows the MQTT connection to feed real DPS data into the cached device data.
-        """
-        if device_sn in self._device_dps_cache:
-            self._device_dps_cache[device_sn]['dps'] = dps_data
-            _LOGGER.debug(f'Updated DPS cache for device {device_sn}')
-        else:
-            # Create new cache entry
-            self._device_dps_cache[device_sn] = {
-                'device_sn': device_sn,
-                'dps': dps_data,
-                'is_online': True
-            }
-            _LOGGER.debug(f'Created new DPS cache entry for device {device_sn}')
+    # REMOVED: update_device_dps - not needed with restored working REST call
 
     async def get_mqtt_credentials(self) -> Optional[dict[str, Any]]:
         """Get MQTT credentials - REST call for setup only."""
@@ -233,6 +222,5 @@ class EufyApi:
     
     def clear_cache(self) -> None:
         """Clear cached data (useful for testing or re-initialization)."""
-        self._device_dps_cache.clear()
         self._cloud_devices.clear()
         _LOGGER.debug('Cleared EufyApi cache')
