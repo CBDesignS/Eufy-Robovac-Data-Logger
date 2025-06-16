@@ -150,7 +150,7 @@ async def _register_services(hass: HomeAssistant) -> None:
             return
         
         try:
-            result = await coordinator.get_investigation_summary()
+            result = await coordinator.generate_investigation_summary()
             _LOGGER.info("📋 Summary generation result: %s", result)
         except Exception as e:
             _LOGGER.error("❌ Summary generation failed: %s", e)
