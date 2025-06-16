@@ -43,9 +43,6 @@ cards:
       - entity: sensor.eufy_robovac_investigation_status
         name: "🔍 Investigation Mode"
         icon: mdi:magnify
-      - entity: sensor.eufy_robovac_restconnect_status
-        name: "🌐 RestConnect"
-        icon: mdi:api
       - entity: sensor.eufy_robovac_accessory_config_manager
         name: "🔧 Accessory Manager"
         icon: mdi:cog-outline
@@ -120,7 +117,7 @@ cards:
         show_state: false
 
       - type: button
-        name: "🔍 Debug Key 180"
+        name: "🔍 Debug Key bytes"
         icon: mdi:bug
         tap_action:
           action: call-service
@@ -187,9 +184,6 @@ state_color: true
 type: entities
 title: "🌐 Connection & Config"
 entities:
-  - entity: sensor.eufy_robovac_restconnect_status
-    name: "RestConnect Status"
-    icon: mdi:api
   - entity: sensor.eufy_robovac_accessory_config_manager
     name: "Accessory Config"
     icon: mdi:cog-outline
