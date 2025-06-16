@@ -3,7 +3,7 @@
 [![HACS Custom Repository](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger)
 [![GitHub Release](https://img.shields.io/github/release/CBDesignS/Eufy-Robovac-Data-Logger.svg)](https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/releases)
 
-A Home Assistant custom component for comprehensive Eufy Robovac API debugging with **Enhanced Smart Investigation Mode v3.0** for accessory wear detection research.
+A Home Assistant custom component for comprehensive Eufy Robovac API debugging with **Enhanced Smart Investigation Mode v4.0** for accessory wear detection research.
 
 ## 🎯 What This Integration Does
 
