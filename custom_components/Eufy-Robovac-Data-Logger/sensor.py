@@ -77,7 +77,7 @@ class EufyRobovacDebugBaseSensor(CoordinatorEntity, SensorEntity):
             name=f"Eufy Robovac Debug {self.device_id}",
             manufacturer="Eufy",
             model="Robovac (DPS Only + Investigation)",
-            sw_version="Debug v3.0.0 - DPS Only + Accessory Config + Investigation Mode",
+            sw_version="Debug v4.0.0 - DPS Only + Accessory Config + Investigation Mode",
         )
         
         _LOGGER.debug("🔧 Initialized %s sensor for device %s with DPS-only", sensor_type, self.device_id)
