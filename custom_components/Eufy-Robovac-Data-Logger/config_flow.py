@@ -1,4 +1,4 @@
-"""Config flow for Eufy Robovac Data Logger integration - Investigation Mode Edition."""
+"""Config flow for Eufy Robovac Data Logger integration - Investigation Mode Edition with Dashboard Generation."""
 import logging
 import voluptuous as vol
 import uuid
@@ -214,17 +214,21 @@ class EufyX10DebugConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class EufyX10DebugOptionsFlow(config_entries.OptionsFlow):
-    """Handle options for Eufy X10 Debugging with Investigation Mode."""
+    """Handle options for Eufy X10 Debugging with Investigation Mode and Dashboard Generation."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-
+        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, any] | None = None
     ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
+            # Check if user wants to generate dashboard
+            if user_input.get("generate_dashboard"):
+                return await self.async_step_dashboard()
+            
             debug_mode = user_input.get(CONF_DEBUG_MODE)
             investigation_mode = user_input.get(CONF_INVESTIGATION_MODE)
             
@@ -248,21 +252,144 @@ class EufyX10DebugOptionsFlow(config_entries.OptionsFlow):
         _LOGGER.debug("⚙️ Showing options form, current debug_mode=%s, investigation_mode=%s", 
                      current_debug_mode, current_investigation_mode)
 
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_DEBUG_MODE,
-                        default=current_debug_mode,
-                    ): bool,
-                    vol.Optional(
-                        CONF_INVESTIGATION_MODE,
-                        default=current_investigation_mode,
-                    ): bool,
-                }
-            ),
-            description_placeholders={
-                "investigation_mode_help": "🔍 Investigation Mode creates detailed Key 180 analysis files for accessory wear research. Enable when you want to capture before/after cleaning data for offline analysis."
+        options_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_DEBUG_MODE,
+                    default=current_debug_mode,
+                ): bool,
+                vol.Optional(
+                    CONF_INVESTIGATION_MODE,
+                    default=current_investigation_mode,
+                ): bool,
+                vol.Optional("generate_dashboard", default=False): bool,
             }
         )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=options_schema,
+            description_placeholders={
+                "investigation_mode_help": "🔍 Investigation Mode creates detailed Key 180 analysis files for accessory wear research. Enable when you want to capture before/after cleaning data for offline analysis.",
+                "dashboard_help": "🎛️ Generate Dashboard creates ready-to-use YAML for your Home Assistant dashboard with one-click service buttons."
+            }
+        )
+
+    async def async_step_dashboard(
+        self, user_input: dict[str, any] | None = None
+    ) -> FlowResult:
+        """Handle dashboard generation step."""
+        if user_input is not None:
+            # Generate dashboard YAML with user's device ID
+            device_id = self.config_entry.data["device_id"] 
+            device_name = self.config_entry.data.get("device_name", "Unknown Device")
+            dashboard_yaml = self._generate_dashboard_yaml(device_id)
+            
+            _LOGGER.info("🎛️ Generated dashboard YAML for device: %s (%s)", device_name, device_id)
+            
+            return self.async_show_form(
+                step_id="dashboard_result",
+                description_placeholders={
+                    "dashboard_yaml": dashboard_yaml,
+                    "device_name": device_name,
+                    "device_id": device_id
+                }
+            )
+        
+        return self.async_show_form(
+            step_id="dashboard",
+            data_schema=vol.Schema({}),
+            description_placeholders={
+                "device_name": self.config_entry.data.get("device_name", "Unknown Device"),
+                "device_id": self.config_entry.data["device_id"]
+            }
+        )
+
+    async def async_step_dashboard_result(
+        self, user_input: dict[str, any] | None = None
+    ) -> FlowResult:
+        """Show the generated dashboard YAML result."""
+        if user_input is not None:
+            # User clicked "Done" - return to main options
+            return await self.async_step_init()
+        
+        # This shouldn't happen, but redirect to dashboard step if it does
+        return await self.async_step_dashboard()
+
+    def _generate_dashboard_yaml(self, device_id: str) -> str:
+        """Generate dashboard YAML with device ID pre-filled."""
+        return f'''type: vertical-stack
+title: "🔍 Eufy Investigation Services"
+cards:
+  - type: entities
+    title: "📱 Device Status"
+    entities:
+      - entity: sensor.eufy_robovac_debug_battery
+        name: "🔋 Battery"
+      - entity: sensor.eufy_robovac_debug_monitoring
+        name: "📊 Monitoring"
+      - entity: sensor.eufy_robovac_investigation_status
+        name: "🔍 Investigation"
+    show_header_toggle: false
+
+  - type: horizontal-stack
+    title: "✅ Working Services"
+    cards:
+      - type: button
+        name: "🎯 Capture Baseline"
+        icon: mdi:target
+        tap_action:
+          action: call-service
+          service: eufy_robovac_data_logger.capture_investigation_baseline
+          service_data:
+            device_id: "{device_id}"
+        show_name: true
+        show_icon: true
+        
+      - type: button
+        name: "📊 Post-Cleaning"
+        icon: mdi:clipboard-check
+        tap_action:
+          action: call-service
+          service: eufy_robovac_data_logger.capture_investigation_post_cleaning
+          service_data:
+            device_id: "{device_id}"
+        show_name: true
+        show_icon: true
+
+      - type: button
+        name: "📋 Generate Summary"
+        icon: mdi:file-document-outline
+        tap_action:
+          action: call-service
+          service: eufy_robovac_data_logger.generate_investigation_summary
+          service_data:
+            device_id: "{device_id}"
+        show_name: true
+        show_icon: true
+
+  - type: horizontal-stack
+    title: "⚙️ Other Services"
+    cards:
+      - type: button
+        name: "🔄 Force Update"
+        icon: mdi:refresh
+        tap_action:
+          action: call-service
+          service: eufy_robovac_data_logger.force_investigation_update
+          service_data:
+            device_id: "{device_id}"
+            phase: "monitoring"
+        show_name: true
+        show_icon: true
+
+      - type: button
+        name: "⚙️ Reload Config"
+        icon: mdi:reload
+        tap_action:
+          action: call-service
+          service: eufy_robovac_data_logger.reload_accessory_config
+          service_data:
+            device_id: "{device_id}"
+        show_name: true
+        show_icon: true'''
