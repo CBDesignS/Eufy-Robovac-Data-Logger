@@ -7,7 +7,11 @@
         "data": {
           "username": "Eufy Account Username/Email",
           "password": "Eufy Account Password",
-          "debug_mode": "Enable Debug Logging"
+          "debug_mode": "Enable Debug Logging",
+          "investigation_mode": "🔍 Investigation Mode - Enable comprehensive Key 180 analysis"
+        },
+        "data_description": {
+          "investigation_mode": "{investigation_mode_description}"
         }
       },
       "device_selection": {
@@ -35,8 +39,24 @@
       "init": {
         "title": "Eufy Robovac Data Logger Options",
         "data": {
-          "debug_mode": "Enable Logging"
+          "debug_mode": "Enable Logging",
+          "investigation_mode": "🔍 Investigation Mode - Enable Key 180 comprehensive analysis",
+          "generate_dashboard": "🎛️ Generate Dashboard - Create ready-to-use dashboard YAML"
+        },
+        "data_description": {
+          "investigation_mode": "{investigation_mode_help}",
+          "generate_dashboard": "{dashboard_help}"
         }
+      },
+      "dashboard": {
+        "title": "🎛️ Generate Investigation Services Dashboard",
+        "description": "Generate a dashboard with one-click service buttons for your device:\n\n📱 **Device**: {device_name}\n🆔 **Device ID**: {device_id}\n\nClick **Submit** to generate the dashboard YAML that you can copy and paste into your Home Assistant dashboard.",
+        "data": {}
+      },
+      "dashboard_result": {
+        "title": "✅ Dashboard YAML Generated",
+        "description": "Copy the YAML below and paste it into your Home Assistant dashboard:\n\n**How to add:**\n1. Go to **Dashboard** → **Edit Dashboard**\n2. Click **Add Card** → **Manual**\n3. **Copy and paste** the YAML below\n4. Click **Save**\n\n**Generated for device:** {device_name} ({device_id})\n\n```yaml\n{dashboard_yaml}\n```\n\n**🎯 Usage:**\n- 🎯 **Capture Baseline** before cleaning\n- 🤖 **Run room cleaning** on your robot\n- 📊 **Post-Cleaning** after robot docks\n- 📋 **Generate Summary** to analyze changes",
+        "data": {}
       }
     }
   }
