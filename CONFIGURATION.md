@@ -1,6 +1,6 @@
 # Configuration Guide - Eufy Robovac Data Logger
 
-Complete setup instructions for Enhanced Smart Investigation Mode v3.0 with sensors configuration.
+Complete setup instructions for Enhanced Smart Investigation Mode v4.0 with sensors configuration and dashboard generation.
 
 ## ⚙️ Initial Setup
 
@@ -20,7 +20,7 @@ Enter your Eufy account details:
 - **Username/Email**: Your Eufy account email
 - **Password**: Your Eufy account password  
 - **✅ Debug Mode**: Enable verbose logging (recommended)
-- **🔍 Investigation Mode**: Enable Key 180 comprehensive analysis
+- **🔍 Investigation Mode**: Enable comprehensive multi-key analysis
 
 ### Step 3: Device Selection
 
@@ -41,12 +41,12 @@ If multiple devices are found, select your target robovac:
 
 ## 🔍 Investigation Mode Configuration
 
-Investigation Mode enables comprehensive Key 180 analysis for accessory discovery.
+Investigation Mode enables comprehensive multi-key analysis for accessory discovery.
 
 ### What Investigation Mode Does
 
-- **Captures Key 180 Data**: Complete byte-by-byte analysis of accessory payload
-- **Smart Change Detection**: Only logs when meaningful changes occur
+- **Captures Multi-Key Data**: Complete analysis of all 22+ monitored keys
+- **Smart Change Detection**: Only logs when meaningful changes occur across any key
 - **Self-Contained Files**: Each file includes complete Android app reference data  
 - **Template System**: Clean sensors configuration with inheritance
 - **Before/After Analysis**: Compare data before and after cleaning cycles
@@ -56,10 +56,10 @@ Investigation Mode enables comprehensive Key 180 analysis for accessory discover
 Files are automatically created in:
 ```
 /config/eufy_investigation/YOUR_DEVICE_ID/
-├── key180_baseline_TIMESTAMP.json         ← Pre-cleaning baseline
-├── key180_post_cleaning_TIMESTAMP.json    ← Post-cleaning analysis
-├── key180_monitoring_TIMESTAMP.json       ← Change detection logs
-└── enhanced_session_summary_SESSION_ID.json ← Complete session analysis
+├── multi_key_baseline_TIMESTAMP.json         ← Pre-cleaning baseline
+├── multi_key_post_cleaning_TIMESTAMP.json    ← Post-cleaning analysis
+├── multi_key_monitoring_TIMESTAMP.json       ← Change detection logs
+└── enhanced_multi_key_session_summary_SESSION_ID.json ← Complete session analysis
 ```
 
 ### Investigation Status Sensor
@@ -74,6 +74,7 @@ Monitor Investigation Mode via:
 - Baseline capture status  
 - Available services for manual control
 - Workflow instructions
+- Multi-key monitoring statistics
 - Current investigation focus (Position 15 = Brush Guard)
 
 ## 🔧 Sensors Configuration System
@@ -234,7 +235,7 @@ This is **YOUR FILE** - edit freely, never overwritten by updates.
 
 3. **Verify Baseline File Created**
    - Check `/config/eufy_investigation/DEVICE_ID/`
-   - Look for `key180_baseline_TIMESTAMP.json`
+   - Look for `multi_key_baseline_TIMESTAMP.json`
 
 ### Phase 2: Cleaning Cycle Test
 
@@ -251,7 +252,7 @@ This is **YOUR FILE** - edit freely, never overwritten by updates.
    ```
 
 3. **Verify Post-Cleaning File**
-   - New file: `key180_post_cleaning_TIMESTAMP.json`
+   - New file: `multi_key_post_cleaning_TIMESTAMP.json`
 
 ### Phase 3: Analysis
 
@@ -265,7 +266,7 @@ This is **YOUR FILE** - edit freely, never overwritten by updates.
 2. **Review Analysis Files**
    - Each file is self-contained with complete reference data
    - Look for `android_app_comparison` section
-   - Check `position_15_focus` for Brush Guard analysis
+   - Check `multi_key_analysis` for comprehensive key analysis
    - Find exact matches between detected and expected percentages
 
 ### Phase 4: Position Confirmation
@@ -336,42 +337,87 @@ data:
 
 This reloads the template and regenerates the device configuration.
 
-## 🌐 RestConnect Configuration
+## 🎛️ Dashboard Generation
 
-RestConnect provides enhanced data collection with automatic fallback.
+The integration includes a built-in dashboard generator for instant setup.
 
-### RestConnect Status
+### Auto-Generate Dashboard Feature
+
+1. **Access Dashboard Generator**
+   - Go to **Settings** → **Devices & Services**
+   - Find your **Eufy Robovac Data Logger** integration
+   - Click **"Configure"**
+
+![Integration Configure](images/integration-configure.png) *(Screenshot placeholder)*
+
+2. **Enable Dashboard Generation**
+   - Check **"🎛️ Generate Dashboard"** option
+   - Optionally adjust other settings (Debug Mode, Investigation Mode)
+   - Click **"Submit"**
+
+![Dashboard Option](images/dashboard-option.png) *(Screenshot placeholder)*
+
+3. **Copy Generated YAML**
+   - The next screen shows complete dashboard YAML
+   - Your device ID is automatically pre-filled
+   - Copy the entire YAML block
+
+![Generated Dashboard](images/generated-dashboard.png) *(Screenshot placeholder)*
+
+4. **Add to Your Dashboard**
+   - Go to **Dashboard** → **Edit Dashboard**
+   - Click **"Add Card"** → **"Manual"**
+   - Paste the generated YAML
+   - Click **"Save"**
+
+### Dashboard Features
+
+The auto-generated dashboard includes:
+
+- **📊 Status Overview**: All sensors in one entity card
+- **🎯 Investigation Services**: One-click baseline, post-cleaning, summary buttons
+- **⚙️ Configuration Services**: Force update, reload config, debug controls
+- **📋 Workflow Guide**: Step-by-step investigation instructions
+
+### Manual Dashboard Setup
+
+If you prefer manual setup, see the [Dashboard Guide →](DASHBOARD.md) for:
+- Complete YAML examples
+- Individual sensor cards
+- Custom service buttons
+- Advanced styling options
+
+## 🌐 DPS-Only Architecture
+
+The integration uses DPS-Only architecture for reliable data collection.
+
+### DPS-Only Status
 
 Monitor connection via:
-**`sensor.eufy_robovac_restconnect_status`**
+**`sensor.eufy_robovac_debug_monitoring`**
 
-![RestConnect Status](images/restconnect-status.png) *(Screenshot placeholder)*
+![DPS Status](images/dps-status.png) *(Screenshot placeholder)*
 
-**Connection Modes:**
-- **🌐 RestConnect**: Using advanced REST API endpoints
-- **📱 Basic Login**: Fallback mode (still fully functional)
+**Connection Information:**
+- **📱 DPS Only (Basic Login)**: Direct device communication
+- **Key Coverage**: Shows monitored keys found vs total
+- **Data Source**: Confirmed DPS-only operation
 
-**Status Indicators:**
-- `is_connected`: RestConnect operational status
-- `api_endpoints_available`: Which REST endpoints are working
-- `has_auth_token`: Authentication status
-- `performance`: Enhanced vs Standard data collection
+### DPS-Only Benefits
 
-### RestConnect Benefits
+- **🎯 Direct Access**: No REST API complications or dependencies
+- **⚡ Reliable Performance**: Consistent data collection
+- **🔑 Complete Key Access**: All device keys available
+- **🚀 Proven Accuracy**: 100% confirmed core sensors
 
-When RestConnect is active:
-- **Enhanced Data Sources**: Access to device, accessory, consumable APIs
-- **Multiple Endpoints**: Combines data from various Eufy services
-- **Better Accuracy**: Cross-validation between data sources
-- **Investigation Enhancement**: More comprehensive Key 180 analysis
+### Connection Health
 
-### Automatic Fallback
+Your DPS connection is healthy when:
 
-If RestConnect fails:
-- **Seamless Switch**: Automatic fallback to basic login
-- **No Data Loss**: All sensors continue working
-- **Background Recovery**: RestConnect retries periodically
-- **User Notification**: Status sensor shows current mode
+1. **High Key Coverage**: 20+/22 monitored keys found
+2. **Stable Updates**: Regular update count increases
+3. **Core Sensors Working**: Battery and speed sensors active
+4. **Investigation Files**: Regular file creation (if Investigation Mode enabled)
 
 ## 🔍 Debug and Troubleshooting
 
@@ -393,8 +439,8 @@ Investigation Mode creates separate detailed logs:
 **Location**: `/config/logs/eufy_robovac_debug_DEVICEID_TIMESTAMP.log`
 
 **Contents**:
-- Complete Key 180 analysis process
-- Byte-by-byte change detection
+- Complete multi-key analysis process
+- Smart change detection decisions
 - Android app comparison results
 - Position discovery attempts
 - Template inheritance status
@@ -403,7 +449,7 @@ Investigation Mode creates separate detailed logs:
 
 #### Investigation Files Not Created
 1. **Check Investigation Mode**: Verify enabled in integration options
-2. **Check Key 180 Data**: Sensor must receive Key 180 from device
+2. **Check Multi-Key Data**: Sensors must receive monitored keys from device
 3. **Check Permissions**: Ensure HA can write to `/config/eufy_investigation/`
 4. **Check Disk Space**: Investigation files need storage space
 
@@ -419,6 +465,12 @@ Investigation Mode creates separate detailed logs:
 3. **Timing**: Capture post-cleaning data immediately after docking
 4. **Multiple Tests**: Run several cleaning cycles to confirm patterns
 
+#### Dashboard Generation Issues
+1. **Integration Not Found**: Ensure integration is properly configured
+2. **Configure Button Missing**: Check integration status in Devices & Services
+3. **YAML Formatting**: Copy entire YAML block including proper indentation
+4. **Device ID Issues**: Use auto-generated YAML to avoid manual ID errors
+
 ### Sensor Validation
 
 Check sensor accuracy by comparing with Android app:
@@ -426,7 +478,7 @@ Check sensor accuracy by comparing with Android app:
 **`sensor.eufy_robovac_debug_monitoring`** shows:
 - Key coverage percentage
 - Found vs missing keys
-- Data source (RestConnect vs Basic Login)
+- Data source (DPS Only)
 
 **Individual accessory sensors** show:
 - `detected_value`: What integration found in byte data
@@ -495,7 +547,8 @@ Fine-tune investigation behavior:
 
 **Available Options:**
 - **🐛 Debug Mode**: Enable/disable detailed logging
-- **🔍 Investigation Mode**: Enable/disable Key 180 analysis
+- **🔍 Investigation Mode**: Enable/disable multi-key analysis
+- **🎛️ Generate Dashboard**: Create ready-to-use dashboard YAML
 
 4. **Save changes** → Integration automatically reloads
 
@@ -503,15 +556,29 @@ Fine-tune investigation behavior:
 
 **Enabling Investigation Mode**:
 - Creates investigation directory structure
-- Starts Key 180 data capture
+- Starts multi-key data capture
 - Enables enhanced smart logging
 - Creates investigation status sensor
 
 **Disabling Investigation Mode**:
-- Stops Key 180 analysis (keeps existing files)
+- Stops multi-key analysis (keeps existing files)
 - Removes investigation status sensor
 - Reduces system resource usage
 - Basic sensors continue working normally
+
+### Dashboard Generation
+
+**Using Dashboard Generator**:
+- Automatically creates device-specific YAML
+- Pre-fills your exact device ID
+- Includes all working services
+- Perfect formatting for copy-paste
+
+**Generated Dashboard Features**:
+- Status overview with all sensors
+- One-click investigation service buttons
+- Configuration and maintenance controls
+- Workflow instructions and tips
 
 ## 🔄 Maintenance Tasks
 
@@ -548,6 +615,18 @@ find /config/eufy_investigation -name "*.json" -mtime +30 -delete
 - Investigation baseline files are valuable for research
 - Session summaries contain comprehensive analysis
 
+### Dashboard Maintenance
+
+**Dashboard Updates**:
+- Regenerate dashboard YAML after device changes
+- Update device IDs if device replacement occurs
+- Customize generated YAML for personal preferences
+
+**Dashboard Troubleshooting**:
+- Verify device ID matches integration exactly
+- Check service names haven't changed
+- Ensure proper YAML indentation maintained
+
 ## 🎉 Success Criteria
 
 ### Position Discovery Success
@@ -564,9 +643,10 @@ You've successfully discovered an accessory position when:
 Your integration is healthy when:
 
 1. **All Core Sensors Working**: Battery, speed, monitoring sensors active
-2. **RestConnect or Fallback**: Either mode working reliably
+2. **High Key Coverage**: 20+/22 monitored keys found consistently
 3. **Template Inheritance**: Device config properly inherits from template
 4. **Investigation Files**: Regular capture without errors (if enabled)
+5. **Dashboard Working**: Auto-generated dashboard functions properly
 
 ### Accessory Tracking Accuracy
 
@@ -579,12 +659,14 @@ Your accessory tracking is accurate when:
 
 ---
 
-## [← Back to README](README.md) | [Installation Guide ←](INSTALLATION.md)
+## [← Back to README](README.md) | [Installation Guide ←](INSTALLATION.md) | [Dashboard Guide →](DASHBOARD.md)
 
 ---
 
-🔧 **Configuration Complete**: Enhanced Smart Investigation Mode v3.0 ready
+🔧 **Configuration Complete**: Enhanced Smart Investigation Mode v4.0 ready
 
 📊 **Sensors Configured**: Template inheritance system operational  
 
-🎯 **Discovery Ready**: Position discovery workflow prepared for testing
+🎛️ **Dashboard Ready**: Auto-generation feature available for instant setup
+
+🎯 **Discovery Ready**: Multi-key position discovery workflow prepared for testing
