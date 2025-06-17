@@ -57,6 +57,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self._eufy_login = None
         self._last_successful_update = None
         self._consecutive_failures = 0
+        self._max_consecutive_failures = 5  # NEW: Threshold before recreating login
         
         # Initialize AccessoryConfigManager
         integration_dir = Path(__file__).parent
@@ -134,7 +135,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     self._debug_log(f"=== 🗂️ Monitoring {len(MONITORED_KEYS)} keys for comprehensive analysis ===", "info")
                 self._debug_log("=" * 60, "info")
             
-            # Fetch data using DPS-only (no REST API)
+            # Fetch data using DPS-only (no REST API) with improved error handling
             await self._fetch_eufy_data_dps_only()
             
             # UPDATED: ENHANCED SMART INVESTIGATION MODE v4.0: Process MULTI-KEY data
@@ -177,10 +178,18 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         except Exception as e:
             self._consecutive_failures += 1
             self._debug_log(f"❌ Update #{self.update_count} failed (consecutive failures: {self._consecutive_failures}): {e}", "error", force=True)
-            raise UpdateFailed(f"Failed to fetch data: {e}")
+            
+            # Only raise UpdateFailed if we've hit the threshold (this destroys login session)
+            if self._consecutive_failures >= self._max_consecutive_failures:
+                self._debug_log(f"🔄 Hit {self._max_consecutive_failures} consecutive failures - will recreate login session", "warning", force=True)
+                raise UpdateFailed(f"Failed to fetch data after {self._consecutive_failures} attempts: {e}")
+            else:
+                # Return last known good data instead of failing completely
+                self._debug_log(f"⚠️ Temporary failure {self._consecutive_failures}/{self._max_consecutive_failures} - keeping login session alive", "warning")
+                return self.parsed_data or {}
 
     async def _fetch_eufy_data_dps_only(self) -> None:
-        """Fetch data using DPS-only (basic login) - NO REST API."""
+        """Fetch data using DPS-only (basic login) - NO REST API with FIXED error handling."""
         try:
             # Use ONLY basic login/DPS for data fetching
             if self._eufy_login:
@@ -195,18 +204,36 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                         if self._should_do_detailed_logging():
                             self._debug_log(f"📱 Data fetched via DPS-only: {len(self.raw_data)} keys", "debug")
                     else:
-                        self._debug_log("❌ No DPS data in device response", "error")
-                        self.raw_data = {}
+                        # FIXED: Don't raise UpdateFailed for missing data - this is temporary
+                        self._debug_log("⚠️ No DPS data in device response - keeping existing data", "warning")
+                        # Keep existing raw_data instead of clearing it
+                        if not hasattr(self, 'raw_data') or not self.raw_data:
+                            self.raw_data = {}
                         
-                except Exception as login_error:
-                    self._debug_log(f"❌ DPS login failed: {login_error}", "error")
-                    raise UpdateFailed(f"DPS login failed: {login_error}")
+                except Exception as dps_error:
+                    # FIXED: Don't raise UpdateFailed for DPS errors - these are often temporary
+                    error_msg = str(dps_error).lower()
+                    
+                    # Check if this is an authentication error vs temporary network error
+                    auth_error_indicators = ['unauthorized', 'invalid token', 'login failed', 'authentication']
+                    is_auth_error = any(indicator in error_msg for indicator in auth_error_indicators)
+                    
+                    if is_auth_error:
+                        self._debug_log(f"🔑 Authentication error detected: {dps_error}", "error")
+                        raise Exception(f"Authentication failed: {dps_error}")  # This will trigger login recreation
+                    else:
+                        # Temporary network/data error - don't destroy login session
+                        self._debug_log(f"📡 Temporary DPS error (keeping login session): {dps_error}", "warning")
+                        # Keep existing data instead of failing
+                        return
             else:
-                raise UpdateFailed("No DPS authentication client available")
+                # No login client - this needs to be recreated
+                raise Exception("No DPS authentication client available")
                 
         except Exception as e:
-            self._debug_log(f"❌ Data fetch failed: {e}", "error")
-            raise UpdateFailed(f"Failed to fetch data: {e}")
+            # FIXED: Only log error and re-raise - let the main update handler decide what to do
+            self._debug_log(f"❌ Data fetch error: {e}", "error")
+            raise  # Re-raise to let main handler count failures and decide when to recreate login
 
     async def _process_sensor_data(self) -> None:
         """Process raw data into structured sensor data."""
@@ -533,7 +560,12 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 smart_status = self.smart_investigation_logger.get_smart_status()
                 investigation_info = f" | 🔍 v4.0: {smart_status['meaningful_logs']} files"
             
-            self._debug_log(f"📊 Brief: Battery {battery}%, Speed {speed}, Keys {found_keys}/{total_keys}{investigation_info}", "info")
+            # Include consecutive failure count if any
+            failure_info = ""
+            if self._consecutive_failures > 0:
+                failure_info = f" | ⚠️ Failures: {self._consecutive_failures}/{self._max_consecutive_failures}"
+            
+            self._debug_log(f"📊 Brief: Battery {battery}%, Speed {speed}, Keys {found_keys}/{total_keys}{investigation_info}{failure_info}", "info")
             
             self._last_logged_status = current_time
             self._quiet_updates_count = 0
