@@ -1,9 +1,9 @@
-"""Enhanced Smart Investigation Logger v4.0 for multi-key Eufy robovac data analysis."""
+"""Enhanced Smart Investigation Logger v4.1 for multi-key Eufy robovac data analysis with FIXED automatic post-cleaning detection."""
 import json
 import hashlib
 import asyncio
 import aiofiles
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from enum import Enum
@@ -21,8 +21,18 @@ class LoggingMode(Enum):
     SESSION_SUMMARY = "session_summary"
 
 
+class CleaningState(Enum):
+    """Cleaning states for automatic completion detection."""
+    UNKNOWN = "unknown"
+    DOCKED = "docked"
+    WASHING_MOPS = "washing_mops"
+    CLEANING = "cleaning"
+    GOING_HOME = "going_home"
+    CHARGING = "charging"
+
+
 class EnhancedSmartMultiKeyInvestigationLogger:
-    """Enhanced Smart Investigation Logger v4.0 with multi-key support and smart efficiency."""
+    """Enhanced Smart Investigation Logger v4.1 with FIXED automatic post-cleaning detection."""
 
     def __init__(self, device_id: str, hass_config_dir: str, integration_dir: str, monitored_keys: List[str]):
         """Initialize the enhanced smart multi-key investigation logger."""
@@ -52,6 +62,19 @@ class EnhancedSmartMultiKeyInvestigationLogger:
         self.key_last_values = {}  # Track last value for each key
         self.key_change_counts = {key: 0 for key in self.monitored_keys}  # Track changes per key
         
+        # FIXED: Enhanced cleaning state tracking for automatic post-cleaning detection
+        self.cleaning_state = CleaningState.UNKNOWN
+        self.previous_cleaning_state = CleaningState.UNKNOWN
+        self.cleaning_start_time = None
+        self.docked_confirmation_time = None
+        self.cleaning_cycle_active = False
+        self.post_cleaning_captured_this_cycle = False
+        
+        # Automatic detection settings
+        self.min_cleaning_duration_minutes = 3  # Must clean for at least 3 minutes
+        self.docked_confirmation_seconds = 30   # Must stay docked for 30 seconds
+        self.post_cleaning_window_minutes = 5   # Capture within 5 minutes of completion
+        
         # Smart logging configuration
         self.min_log_interval_seconds = 30  # Don't log more frequently than every 30 seconds
         self.significant_change_threshold = 2  # Minimum change to be considered significant
@@ -60,13 +83,15 @@ class EnhancedSmartMultiKeyInvestigationLogger:
         # File management
         self.max_monitoring_files = 10  # Keep last 10 monitoring files per session
         
-        _LOGGER.info("🔍 Enhanced Smart Multi-Key Investigation Logger v4.0 initialized")
+        _LOGGER.info("🔍 Enhanced Smart Multi-Key Investigation Logger v4.1 initialized")
+        _LOGGER.info("🔧 FIXED: Automatic post-cleaning detection waits for completion")
         _LOGGER.info(f"📁 Investigation directory: {self.investigation_dir}")
         _LOGGER.info(f"🗂️ Monitoring {len(self.monitored_keys)} keys: {', '.join(self.monitored_keys)}")
         _LOGGER.info(f"🔬 Session ID: {self.session_id}")
+        _LOGGER.info(f"⏱️ Auto-detection: {self.min_cleaning_duration_minutes}min cleaning + {self.docked_confirmation_seconds}s docked confirmation")
 
     async def initialize(self) -> None:
-        """Initialize the investigation logger - FIXED: Added missing method."""
+        """Initialize the investigation logger."""
         try:
             # Ensure investigation directory exists
             self.investigation_dir.mkdir(parents=True, exist_ok=True)
@@ -77,10 +102,11 @@ class EnhancedSmartMultiKeyInvestigationLogger:
             # Initialize sensors config
             await self._load_sensors_config()
             
-            _LOGGER.info("✅ Enhanced Smart Multi-Key Investigation Logger v4.0 initialized successfully")
+            _LOGGER.info("✅ Enhanced Smart Multi-Key Investigation Logger v4.1 initialized successfully")
             _LOGGER.info(f"📂 Investigation directory ready: {self.investigation_dir}")
             _LOGGER.info(f"🔬 Session ID: {self.session_id}")
             _LOGGER.info(f"🗂️ Monitoring keys: {', '.join(self.monitored_keys)}")
+            _LOGGER.info("🔧 FIXED: Auto post-cleaning detection waits for actual completion")
             
         except Exception as e:
             _LOGGER.error(f"❌ Failed to initialize investigation logger: {e}")
@@ -106,7 +132,7 @@ class EnhancedSmartMultiKeyInvestigationLogger:
             _LOGGER.warning(f"⚠️ Could not load session state: {e}")
 
     async def process_multi_key_update(self, raw_data: Dict[str, Any]) -> Optional[str]:
-        """Process multi-key update with enhanced smart logging v4.0."""
+        """Process multi-key update with FIXED automatic post-cleaning detection."""
         try:
             self.total_updates_received += 1
             
@@ -116,12 +142,15 @@ class EnhancedSmartMultiKeyInvestigationLogger:
             if not available_keys:
                 return None
             
+            # FIXED: Update cleaning state tracking FIRST
+            await self._update_cleaning_state_tracking(available_keys)
+            
             # Generate data hash for duplicate detection
             combined_data = json.dumps(available_keys, sort_keys=True)
             data_hash = hashlib.md5(combined_data.encode()).hexdigest()
             
-            # Smart logging decision
-            should_log, log_reason = await self._should_log_multi_key_update(available_keys, data_hash)
+            # FIXED: Smart logging decision with proper completion detection
+            should_log, log_reason = await self._should_log_multi_key_update_fixed(available_keys, data_hash)
             
             if not should_log:
                 if log_reason == "duplicate_data":
@@ -149,6 +178,12 @@ class EnhancedSmartMultiKeyInvestigationLogger:
             
             self.meaningful_logs_created += 1
             
+            # FIXED: Log completion detection info
+            if "automatic_post_cleaning" in log_reason:
+                _LOGGER.info("🎯 AUTOMATIC POST-CLEANING CAPTURED: Cleaning cycle completed, robot returned to dock")
+                _LOGGER.info(f"⏱️ Cleaning duration: {self._get_cleaning_duration_minutes():.1f} minutes")
+                _LOGGER.info(f"📁 File: {filename}")
+            
             # Cleanup old files if needed
             await self._cleanup_old_files()
             
@@ -158,11 +193,180 @@ class EnhancedSmartMultiKeyInvestigationLogger:
             _LOGGER.error(f"❌ Multi-key processing error: {e}")
             return None
 
-    async def _should_log_multi_key_update(self, available_keys: Dict[str, Any], data_hash: str) -> Tuple[bool, str]:
-        """Determine if we should log this multi-key update."""
+    async def _update_cleaning_state_tracking(self, available_keys: Dict[str, Any]) -> None:
+        """FIXED: Update cleaning state tracking for automatic completion detection."""
+        try:
+            # Extract work status from Key 153
+            new_state = await self._determine_cleaning_state(available_keys)
+            
+            # Update state history
+            self.previous_cleaning_state = self.cleaning_state
+            self.cleaning_state = new_state
+            
+            current_time = datetime.now()
+            
+            # FIXED: Track cleaning cycle start
+            if (self.previous_cleaning_state in [CleaningState.DOCKED, CleaningState.CHARGING, CleaningState.UNKNOWN] and
+                self.cleaning_state in [CleaningState.WASHING_MOPS, CleaningState.CLEANING]):
+                
+                self.cleaning_start_time = current_time
+                self.cleaning_cycle_active = True
+                self.post_cleaning_captured_this_cycle = False
+                self.docked_confirmation_time = None
+                
+                _LOGGER.info(f"🚀 CLEANING CYCLE STARTED: {self.previous_cleaning_state.value} → {self.cleaning_state.value}")
+            
+            # FIXED: Track cleaning progression
+            elif (self.cleaning_cycle_active and 
+                  self.previous_cleaning_state in [CleaningState.WASHING_MOPS, CleaningState.CLEANING] and
+                  self.cleaning_state == CleaningState.CLEANING):
+                
+                _LOGGER.debug(f"🔄 CLEANING ACTIVE: {self.previous_cleaning_state.value} → {self.cleaning_state.value}")
+            
+            # FIXED: Track return to dock (completion candidate)
+            elif (self.cleaning_cycle_active and 
+                  self.previous_cleaning_state in [CleaningState.CLEANING, CleaningState.GOING_HOME] and
+                  self.cleaning_state in [CleaningState.DOCKED, CleaningState.CHARGING]):
+                
+                if self.docked_confirmation_time is None:
+                    self.docked_confirmation_time = current_time
+                    _LOGGER.info(f"🏠 RETURNED TO DOCK: {self.previous_cleaning_state.value} → {self.cleaning_state.value}")
+                    _LOGGER.info(f"⏱️ Starting {self.docked_confirmation_seconds}s docked confirmation timer")
+            
+            # FIXED: Reset if robot leaves dock during confirmation
+            elif (self.docked_confirmation_time is not None and
+                  self.cleaning_state not in [CleaningState.DOCKED, CleaningState.CHARGING]):
+                
+                _LOGGER.warning(f"⚠️ DOCK CONFIRMATION RESET: Robot left dock during confirmation")
+                self.docked_confirmation_time = None
+            
+            # Log state changes for debugging
+            if self.previous_cleaning_state != self.cleaning_state:
+                _LOGGER.debug(f"🔄 State change: {self.previous_cleaning_state.value} → {self.cleaning_state.value}")
+                
+        except Exception as e:
+            _LOGGER.error(f"❌ Error updating cleaning state: {e}")
+
+    async def _determine_cleaning_state(self, available_keys: Dict[str, Any]) -> CleaningState:
+        """FIXED: Determine current cleaning state from work status data."""
+        try:
+            # Try Key 153 (work status)
+            if "153" in available_keys:
+                work_status_value = available_keys["153"]
+                
+                # Try to decode if base64
+                if isinstance(work_status_value, str):
+                    try:
+                        decoded = base64.b64decode(work_status_value)
+                        # Look for status bytes in known ranges
+                        for byte_val in decoded:
+                            state = self._map_byte_to_cleaning_state(byte_val)
+                            if state != CleaningState.UNKNOWN:
+                                return state
+                    except:
+                        pass
+                
+                # Try direct numeric value
+                elif isinstance(work_status_value, (int, float)):
+                    return self._map_byte_to_cleaning_state(int(work_status_value))
+            
+            # Fallback: try other status keys
+            for key in ["152", "154", "157", "162", "177"]:
+                if key in available_keys:
+                    try:
+                        value = available_keys[key]
+                        if isinstance(value, (int, float)):
+                            state = self._map_byte_to_cleaning_state(int(value))
+                            if state != CleaningState.UNKNOWN:
+                                return state
+                    except:
+                        continue
+            
+            return CleaningState.UNKNOWN
+            
+        except Exception as e:
+            _LOGGER.debug(f"Error determining cleaning state: {e}")
+            return CleaningState.UNKNOWN
+
+    def _map_byte_to_cleaning_state(self, byte_value: int) -> CleaningState:
+        """FIXED: Map byte values to cleaning states based on known patterns."""
+        # Common work status mappings from Eufy protocol
+        if byte_value == 0:
+            return CleaningState.DOCKED
+        elif byte_value == 1:
+            return CleaningState.WASHING_MOPS  # Or standby
+        elif byte_value == 2:
+            return CleaningState.CHARGING      # Or fault
+        elif byte_value == 3:
+            return CleaningState.CHARGING
+        elif byte_value == 4:
+            return CleaningState.CLEANING      # Fast mapping or cleaning
+        elif byte_value == 5:
+            return CleaningState.CLEANING
+        elif byte_value == 6:
+            return CleaningState.CLEANING      # Remote control
+        elif byte_value == 7:
+            return CleaningState.GOING_HOME
+        elif byte_value == 8:
+            return CleaningState.CLEANING      # Cruising
+        else:
+            return CleaningState.UNKNOWN
+
+    def _is_cleaning_completed(self) -> bool:
+        """FIXED: Check if cleaning cycle has completed and robot is confirmed docked."""
+        current_time = datetime.now()
+        
+        # Must have an active cleaning cycle
+        if not self.cleaning_cycle_active:
+            return False
+        
+        # Must have already captured post-cleaning for this cycle
+        if self.post_cleaning_captured_this_cycle:
+            return False
+        
+        # Must have started cleaning at least minimum duration ago
+        if not self.cleaning_start_time:
+            return False
+        
+        cleaning_duration = (current_time - self.cleaning_start_time).total_seconds() / 60
+        if cleaning_duration < self.min_cleaning_duration_minutes:
+            return False
+        
+        # Must be currently docked/charging
+        if self.cleaning_state not in [CleaningState.DOCKED, CleaningState.CHARGING]:
+            return False
+        
+        # Must have been docked for confirmation period
+        if not self.docked_confirmation_time:
+            return False
+        
+        docked_duration = (current_time - self.docked_confirmation_time).total_seconds()
+        if docked_duration < self.docked_confirmation_seconds:
+            return False
+        
+        # All conditions met - cleaning is completed!
+        return True
+
+    def _get_cleaning_duration_minutes(self) -> float:
+        """Get the duration of the current/last cleaning cycle in minutes."""
+        if not self.cleaning_start_time:
+            return 0.0
+        
+        end_time = self.docked_confirmation_time or datetime.now()
+        return (end_time - self.cleaning_start_time).total_seconds() / 60
+
+    async def _should_log_multi_key_update_fixed(self, available_keys: Dict[str, Any], data_hash: str) -> Tuple[bool, str]:
+        """FIXED: Determine if we should log this multi-key update with proper completion detection."""
+        
         # Always log if no baseline captured
         if not self.baseline_captured:
             return True, "baseline_capture"
+        
+        # FIXED: Check for automatic post-cleaning completion FIRST
+        if self._is_cleaning_completed():
+            self.post_cleaning_captured_this_cycle = True
+            self.cleaning_cycle_active = False
+            return True, "automatic_post_cleaning_completion"
         
         # Don't log too frequently
         if (self.last_log_time and 
@@ -173,32 +377,31 @@ class EnhancedSmartMultiKeyInvestigationLogger:
         if self.last_multi_key_hash == data_hash:
             return False, "duplicate_data"
         
-        # Check for significant changes in any key
-        significant_changes = []
-        for key, current_value in available_keys.items():
-            last_value = self.key_last_values.get(key)
-            if last_value is not None and last_value != current_value:
-                # Analyze the change
-                change_significance = await self._analyze_key_change_significance(key, last_value, current_value)
-                if change_significance["significant"]:
-                    significant_changes.append(f"Key {key}: {change_significance['description']}")
+        # Check for significant changes in any key (but NOT during active cleaning)
+        if not self.cleaning_cycle_active:  # FIXED: Only check changes when not actively cleaning
+            significant_changes = []
+            for key, current_value in available_keys.items():
+                last_value = self.key_last_values.get(key)
+                if last_value is not None and last_value != current_value:
+                    # Analyze the change
+                    change_significance = await self._analyze_key_change_significance(key, last_value, current_value)
+                    if change_significance["significant"]:
+                        significant_changes.append(f"Key {key}: {change_significance['description']}")
+            
+            if significant_changes:
+                return True, f"significant_changes: {', '.join(significant_changes[:3])}"  # Limit to first 3
         
-        if significant_changes:
-            return True, f"significant_changes: {', '.join(significant_changes[:3])}"  # Limit to first 3
+        # REMOVED: Old cleaning activity detection that triggered too early
+        # The old logic triggered on ANY status change during cleaning
         
-        # Check for potential cleaning activity (look for work status changes)
-        if "153" in available_keys:  # Work status key
-            work_status_change = await self._detect_cleaning_activity(available_keys["153"])
-            if work_status_change:
-                return True, f"cleaning_activity: {work_status_change}"
-        
-        # Log periodically even without changes (monitoring mode)
-        if (self.last_log_time and 
+        # Log periodically even without changes (monitoring mode) - but not during cleaning
+        if (not self.cleaning_cycle_active and 
+            self.last_log_time and 
             (datetime.now() - self.last_log_time).total_seconds() > 300):  # 5 minutes
             return True, "periodic_monitoring"
         
         return False, "no_significant_change"
-    
+
     async def _analyze_key_change_significance(self, key: str, old_value: Any, new_value: Any) -> Dict[str, Any]:
         """Analyze the significance of a change in a specific key."""
         # For numeric values (potential percentages)
@@ -241,21 +444,14 @@ class EnhancedSmartMultiKeyInvestigationLogger:
         
         return {"significant": False, "description": "No significant change", "type": "unchanged", "magnitude": 0}
     
-    async def _detect_cleaning_activity(self, work_status_value: Any) -> Optional[str]:
-        """Detect cleaning activity from work status key."""
-        # This is a placeholder - would need to decode the actual work status format
-        # For now, just detect any change in work status
-        last_work_status = self.key_last_values.get("153")
-        if last_work_status and last_work_status != work_status_value:
-            return f"work_status_change"
-        return None
-    
     async def _determine_log_mode_and_filename(self, log_reason: str) -> Tuple[LoggingMode, str]:
         """Determine logging mode and filename for multi-key logging."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         
         if log_reason == "baseline_capture":
             return LoggingMode.BASELINE, f"multi_key_baseline_{timestamp}.json"
+        elif "automatic_post_cleaning" in log_reason:
+            return LoggingMode.POST_CLEANING, f"multi_key_auto_post_cleaning_{timestamp}.json"
         elif "post_cleaning" in log_reason:
             return LoggingMode.POST_CLEANING, f"multi_key_post_cleaning_{timestamp}.json"
         else:
@@ -279,12 +475,20 @@ class EnhancedSmartMultiKeyInvestigationLogger:
                 "log_mode": log_mode.value,
                 "log_reason": log_reason,
                 "update_number": self.total_updates_received,
-                "smart_logger_version": "4.0_multi_key",
+                "smart_logger_version": "4.1_multi_key_fixed_auto_detection",
                 "file_number": self.meaningful_logs_created + 1,
                 "self_contained": True,
                 "includes_sensors_config": sensors_config is not None,
                 "monitored_keys_count": len(self.monitored_keys),
-                "available_keys_count": len(available_keys)
+                "available_keys_count": len(available_keys),
+                # FIXED: Add cleaning cycle information
+                "cleaning_cycle_info": {
+                    "cleaning_state": self.cleaning_state.value,
+                    "previous_state": self.previous_cleaning_state.value,
+                    "cycle_active": self.cleaning_cycle_active,
+                    "cleaning_duration_minutes": self._get_cleaning_duration_minutes(),
+                    "auto_completion_detected": "automatic_post_cleaning" in log_reason
+                }
             },
             "smart_logging_info": {
                 "total_updates_received": self.total_updates_received,
@@ -293,7 +497,15 @@ class EnhancedSmartMultiKeyInvestigationLogger:
                 "logging_efficiency": f"{(self.duplicates_skipped / max(1, self.total_updates_received) * 100):.1f}% duplicates avoided",
                 "monitored_keys": self.monitored_keys,
                 "available_keys": list(available_keys.keys()),
-                "missing_keys": [key for key in self.monitored_keys if key not in available_keys]
+                "missing_keys": [key for key in self.monitored_keys if key not in available_keys],
+                # FIXED: Add auto-detection status
+                "auto_detection_info": {
+                    "completion_detection_fixed": True,
+                    "min_cleaning_duration_minutes": self.min_cleaning_duration_minutes,
+                    "docked_confirmation_seconds": self.docked_confirmation_seconds,
+                    "current_cleaning_state": self.cleaning_state.value,
+                    "cleaning_cycle_active": self.cleaning_cycle_active
+                }
             },
             "multi_key_data": {}
         }
@@ -464,228 +676,4 @@ class EnhancedSmartMultiKeyInvestigationLogger:
                         "potential_meaning": potential_meaning
                     })
         
-        # Update summary
-        search_results["summary"]["total_percentage_values"] = len(search_results["percentage_values"])
-        search_results["summary"]["water_tank_candidates"] = len(search_results["water_tank_50_search"])
-        
-        # Find most likely candidates
-        if search_results["water_tank_50_search"]:
-            search_results["summary"]["most_likely_water_tank"] = search_results["water_tank_50_search"][0]["key"]
-        
-        return search_results
-    
-    async def _create_sensors_reference(self, sensors_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-        """Create sensors configuration reference for self-contained analysis."""
-        if not sensors_config:
-            return {"error": "No sensors configuration available"}
-        
-        reference = {
-            "config_loaded": True,
-            "config_timestamp": datetime.now().isoformat(),
-            "accessories": sensors_config.get("accessories", {}),
-            "discovery_settings": sensors_config.get("discovery_settings", {}),
-            "template_info": {
-                "purpose": "Android app percentages for comparison",
-                "usage": "Compare detected values with these expected percentages",
-                "note": "Values should decrease by 1-3% after cleaning cycles"
-            }
-        }
-        
-        return reference
-    
-    def _extract_efficient_context(self, full_raw_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract context data efficiently without bloating the file."""
-        context = {
-            "total_keys_available": len(full_raw_data),
-            "monitored_keys_available": len([k for k in self.monitored_keys if k in full_raw_data]),
-            "data_source_info": {
-                "has_key_180": "180" in full_raw_data,
-                "has_key_163": "163" in full_raw_data,
-                "has_key_161": "161" in full_raw_data,
-                "has_key_167": "167" in full_raw_data
-            }
-        }
-        
-        # Add first 5 characters of each monitored key for quick reference
-        for key in self.monitored_keys:
-            if key in full_raw_data and full_raw_data[key] is not None:
-                value = str(full_raw_data[key])
-                context[f"key_{key}_preview"] = value[:10] + ("..." if len(value) > 10 else "")
-        
-        return context
-    
-    async def _update_state_after_logging(self, available_keys: Dict[str, Any], data_hash: str, log_mode: LoggingMode, filepath: Path) -> None:
-        """Update tracking state after successful logging."""
-        self.last_multi_key_hash = data_hash
-        self.last_logged_data = available_keys.copy()
-        self.last_log_time = datetime.now()
-        
-        # Update individual key tracking
-        for key, value in available_keys.items():
-            if self.key_last_values.get(key) != value:
-                self.key_change_counts[key] += 1
-            self.key_last_values[key] = value
-        
-        if log_mode == LoggingMode.BASELINE:
-            self.baseline_captured = True
-            self.current_mode = LoggingMode.SMART_MONITORING
-            _LOGGER.info("🎯 Enhanced multi-key baseline captured, switching to smart monitoring mode")
-    
-    async def _cleanup_old_files(self) -> None:
-        """Cleanup old monitoring files to prevent bloat."""
-        try:
-            # Get all monitoring files
-            monitoring_files = list(self.investigation_dir.glob("multi_key_monitoring_*.json"))
-            
-            if len(monitoring_files) > self.max_monitoring_files:
-                # Sort by modification time and remove oldest
-                monitoring_files.sort(key=lambda f: f.stat().st_mtime)
-                files_to_remove = monitoring_files[:-self.max_monitoring_files]
-                
-                for file_to_remove in files_to_remove:
-                    file_to_remove.unlink()
-                    _LOGGER.debug("🗑️ Cleaned up old monitoring file: %s", file_to_remove.name)
-                
-                _LOGGER.info("🧹 Cleaned up %d old monitoring files", len(files_to_remove))
-        
-        except Exception as e:
-            _LOGGER.warning("⚠️ File cleanup failed: %s", e)
-    
-    # Manual trigger methods - updated for multi-key
-    async def capture_baseline(self, raw_data: Dict[str, Any]) -> Optional[str]:
-        """Manually capture baseline with multi-key support."""
-        # Force baseline logging
-        original_baseline_state = self.baseline_captured
-        self.baseline_captured = False
-        
-        result = await self.process_multi_key_update(raw_data)
-        
-        if not result:
-            self.baseline_captured = original_baseline_state
-        
-        return result
-    
-    async def capture_post_cleaning(self, raw_data: Dict[str, Any]) -> Optional[str]:
-        """Manually capture post-cleaning data with multi-key analysis."""
-        # Force post-cleaning log
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-        filename = f"multi_key_post_cleaning_{timestamp}.json"
-        
-        # Extract available keys
-        available_keys = {key: raw_data[key] for key in self.monitored_keys if key in raw_data and raw_data[key] is not None}
-        
-        if not available_keys:
-            return None
-        
-        # Load sensors config for enhanced analysis
-        sensors_config = await self._load_sensors_config()
-        
-        analysis_data = await self._create_enhanced_multi_key_analysis(
-            available_keys, raw_data, LoggingMode.POST_CLEANING, "manual_post_cleaning", sensors_config
-        )
-        
-        filepath = self.investigation_dir / filename
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(analysis_data, indent=2, ensure_ascii=False))
-        
-        # Update state
-        combined_data = json.dumps(available_keys, sort_keys=True)
-        data_hash = hashlib.md5(combined_data.encode()).hexdigest()
-        await self._update_state_after_logging(available_keys, data_hash, LoggingMode.POST_CLEANING, filepath)
-        
-        self.meaningful_logs_created += 1
-        return str(filepath)
-    
-    async def generate_session_summary(self) -> str:
-        """Generate enhanced session summary with multi-key analysis."""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-        filename = f"enhanced_multi_key_session_summary_{self.session_id}_{timestamp}.json"
-        
-        # Collect all investigation files for analysis
-        baseline_files = list(self.investigation_dir.glob("multi_key_baseline_*.json"))
-        monitoring_files = list(self.investigation_dir.glob("multi_key_monitoring_*.json"))
-        post_cleaning_files = list(self.investigation_dir.glob("multi_key_post_cleaning_*.json"))
-        
-        summary_data = {
-            "metadata": {
-                "session_id": self.session_id,
-                "device_id": self.device_id,
-                "timestamp": datetime.now().isoformat(),
-                "summary_version": "4.0_multi_key",
-                "total_files_analyzed": len(baseline_files) + len(monitoring_files) + len(post_cleaning_files)
-            },
-            "session_statistics": {
-                "total_updates_received": self.total_updates_received,
-                "meaningful_logs_created": self.meaningful_logs_created,
-                "duplicates_skipped": self.duplicates_skipped,
-                "logging_efficiency": f"{(self.duplicates_skipped / max(1, self.total_updates_received) * 100):.1f}%",
-                "baseline_files": len(baseline_files),
-                "monitoring_files": len(monitoring_files),
-                "post_cleaning_files": len(post_cleaning_files)
-            },
-            "key_change_summary": {
-                "monitored_keys": self.monitored_keys,
-                "key_change_counts": self.key_change_counts,
-                "total_changes": sum(self.key_change_counts.values()),
-                "most_active_keys": sorted(self.key_change_counts.items(), key=lambda x: x[1], reverse=True)[:5]
-            },
-            "investigation_directory": str(self.investigation_dir),
-            "file_inventory": {
-                "baseline_files": [f.name for f in baseline_files],
-                "monitoring_files": [f.name for f in monitoring_files],
-                "post_cleaning_files": [f.name for f in post_cleaning_files]
-            }
-        }
-        
-        # Write summary file
-        filepath = self.investigation_dir / filename
-        async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(summary_data, indent=2, ensure_ascii=False))
-        
-        return str(filepath)
-    
-    def get_smart_status(self) -> Dict[str, Any]:
-        """Get current smart logging status."""
-        efficiency_percentage = (self.duplicates_skipped / max(1, self.total_updates_received) * 100)
-        
-        return {
-            "session_id": self.session_id,
-            "baseline_captured": self.baseline_captured,
-            "current_mode": self.current_mode.value,
-            "total_updates": self.total_updates_received,
-            "meaningful_logs": self.meaningful_logs_created,
-            "duplicates_skipped": self.duplicates_skipped,
-            "efficiency_percentage": round(efficiency_percentage, 1),
-            "monitored_keys_count": len(self.monitored_keys),
-            "investigation_directory": str(self.investigation_dir),
-            "last_log_time": self.last_log_time.isoformat() if self.last_log_time else None,
-            "key_change_summary": {
-                "total_changes": sum(self.key_change_counts.values()),
-                "key_change_counts": self.key_change_counts,
-                "most_active_keys": sorted(self.key_change_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-            }
-        }
-    
-    async def _load_sensors_config(self) -> Optional[Dict[str, Any]]:
-        """Load sensors configuration for analysis reference."""
-        try:
-            # Try to load device-specific config first
-            device_config_path = self.integration_dir / "accessories" / f"sensors_{self.device_id}.json"
-            if device_config_path.exists():
-                async with aiofiles.open(device_config_path, 'r', encoding='utf-8') as f:
-                    content = await f.read()
-                    return json.loads(content)
-            
-            # Fallback to template config
-            template_config_path = self.integration_dir / "accessories" / "sensors.json"
-            if template_config_path.exists():
-                async with aiofiles.open(template_config_path, 'r', encoding='utf-8') as f:
-                    content = await f.read()
-                    return json.loads(content)
-            
-            return None
-            
-        except Exception as e:
-            _LOGGER.warning(f"⚠️ Could not load sensors config: {e}")
-            return None
-            
+        # Update
