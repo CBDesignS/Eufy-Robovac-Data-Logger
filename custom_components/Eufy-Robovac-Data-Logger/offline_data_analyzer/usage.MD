@@ -66,6 +66,7 @@ JSON Output Structure:
 }
 
 What You'll Get:
+
 ✅ All percentage candidates by key & byte position
 
 ✅ Template sensor matches with confidence levels
