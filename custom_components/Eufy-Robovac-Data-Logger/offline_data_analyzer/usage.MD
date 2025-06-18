@@ -67,8 +67,13 @@ JSON Output Structure:
 
 What You'll Get:
 ✅ All percentage candidates by key & byte position
+
 ✅ Template sensor matches with confidence levels
+
 ✅ Change detection between multiple log files
+
 ✅ Byte-level analysis of base64 decoded data
+
 ✅ Actionable recommendations for sensors.json updates
+
 ✅ Cross-session comparison capabilities
