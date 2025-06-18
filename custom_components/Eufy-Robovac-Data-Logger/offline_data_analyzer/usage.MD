@@ -25,6 +25,6 @@ Suggests specific key/byte positions to update in sensors.json
 Provides actionable next steps
 
 ** Usage Destructions **
-Save the file as eufy_analyzer.py
-Run it with: python eufy_analyzer.py [input_directory] [output_file]
+1. Save the file as eufy_analyzer.py
+2. Run it with: python eufy_analyzer.py [input_directory] [output_file]
 Or run interactively with: python eufy_analyzer.py
