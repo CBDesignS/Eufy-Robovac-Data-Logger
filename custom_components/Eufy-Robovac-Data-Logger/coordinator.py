@@ -29,7 +29,12 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
         self.username = entry.data["username"]
         self.password = entry.data["password"]
         self.openudid = entry.data.get("openudid", f"ha_debug_{self.device_id}")
-        self.debug_mode = entry.data.get("debug_mode", True)
+        
+        # FIXED: Properly read debug_mode from options first, then data, default False
+        self.debug_mode = entry.options.get(
+            CONF_DEBUG_MODE,
+            entry.data.get(CONF_DEBUG_MODE, False)
+        )
         
         # UPDATED: Enhanced Smart Investigation Mode v4.0 - Multi-Key Support
         self.investigation_mode = entry.options.get(
@@ -88,7 +93,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("❌ Failed to initialize multi-key investigation logger v4.0: %s", e)
                 self.smart_investigation_logger = None
         
-        # Debug logger for detailed debugging when needed
+        # FIXED: Debug logger ONLY created when debug_mode is explicitly True
         self.debug_logger = None
         if self.debug_mode:
             try:
@@ -97,8 +102,11 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                     device_id=self.device_id,
                     hass_config_dir=hass.config.config_dir
                 )
+                _LOGGER.info("🐛 Debug logger initialized - debug_mode=True")
             except Exception as e:
                 _LOGGER.warning("⚠️ Failed to initialize debug logger: %s", e)
+        else:
+            _LOGGER.info("🔇 Debug logger disabled - debug_mode=False")
 
         super().__init__(
             hass,
@@ -163,8 +171,9 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 self._debug_log(f"✅ UPDATE #{self.update_count} COMPLETED - Battery: {self.parsed_data.get('battery', '?')}%, Raw keys: {len(self.raw_data)}, Monitored found: {len(self.parsed_data.get('monitored_keys_found', []))}/{len(MONITORED_KEYS)}{investigation_status}", "info")
                 self._debug_log("=" * 60, "info")
             else:
-                # Log brief status
-                self._log_brief_status()
+                # FIXED: Only log brief status if debug mode is on
+                if self.debug_mode:
+                    self._log_brief_status()
             
             # Return combined data
             return {
@@ -447,7 +456,9 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                             "last_updated": sensor_config.get("last_updated")
                         }
                         
-                        self._debug_log(f"❌ {sensor_config['name']}: Key {key} not available", "debug")
+                        # FIXED: Only log TBD key errors when debug mode is on
+                        if self.debug_mode:
+                            self._debug_log(f"❌ {sensor_config['name']}: Key {key} not available", "debug")
                 
                 except Exception as sensor_error:
                     self._debug_log(f"⚠️ Error processing accessory {sensor_id}: {sensor_error}", "warning")
@@ -458,10 +469,11 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             # Update previous data for change detection
             self.previous_accessory_data = accessory_data.copy()
             
-            if changes_detected:
+            if changes_detected and self.debug_mode:
                 self._debug_log("🎯 Accessory changes detected - logged for enhanced investigation v4.0", "info")
             
-            self._debug_log(f"✅ Processed {len(accessory_data)} accessory sensors", "debug")
+            if self.debug_mode:
+                self._debug_log(f"✅ Processed {len(accessory_data)} accessory sensors", "debug")
             
         except Exception as e:
             self._debug_log(f"❌ Accessory data processing error: {e}", "error", force=True)
@@ -486,7 +498,8 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             return None
             
         except Exception as e:
-            self._debug_log(f"⚠️ Error extracting accessory value: {e}", "debug")
+            if self.debug_mode:
+                self._debug_log(f"⚠️ Error extracting accessory value: {e}", "debug")
             return None
 
     def _calculate_detection_accuracy(self, detected: Optional[int], expected: int) -> Optional[float]:
@@ -526,6 +539,10 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
 
     def _should_do_detailed_logging(self) -> bool:
         """Determine if we should do detailed logging this update."""
+        # FIXED: Only do detailed logging if debug mode is on
+        if not self.debug_mode:
+            return False
+            
         current_time = time.time()
         
         # Always log first few updates in detail
@@ -586,14 +603,16 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
             
             self._debug_log(f"✅ Loaded {len(self.accessory_sensors)} accessory sensors from config", "info", force=True)
             
-            # Log loaded sensors
-            for sensor_id, sensor_config in self.accessory_sensors.items():
-                self._debug_log(f"   📍 {sensor_config['name']}: {sensor_config['current_life_remaining']}% "
-                              f"(Key {sensor_config['key']}, Byte {sensor_config['byte_position']})", "info", force=True)
-            
-            # Get config file path for user reference
-            config_path = self.accessory_manager.get_config_file_path()
-            self._debug_log(f"📂 Config file location: {config_path}", "info", force=True)
+            # FIXED: Only log individual sensors when debug mode is on
+            if self.debug_mode:
+                # Log loaded sensors
+                for sensor_id, sensor_config in self.accessory_sensors.items():
+                    self._debug_log(f"   📍 {sensor_config['name']}: {sensor_config['current_life_remaining']}% "
+                                  f"(Key {sensor_config['key']}, Byte {sensor_config['byte_position']})", "info", force=True)
+                
+                # Get config file path for user reference
+                config_path = self.accessory_manager.get_config_file_path()
+                self._debug_log(f"📂 Config file location: {config_path}", "info", force=True)
             
         except Exception as e:
             self._debug_log(f"❌ Failed to initialize accessory config: {e}", "error", force=True)
@@ -602,7 +621,7 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
     def _debug_log(self, message: str, level: str = "info", force: bool = False) -> None:
         """Smart debug logging with level control."""
         try:
-            # Always log if forced or if debug mode is on
+            # FIXED: Only log to HA logger if debug mode is on OR if forced
             if force or self.debug_mode:
                 if level == "error":
                     _LOGGER.error(message)
@@ -613,8 +632,8 @@ class EufyX10DebugCoordinator(DataUpdateCoordinator):
                 else:
                     _LOGGER.info(message)
             
-            # Also log to debug logger if available
-            if self.debug_logger and hasattr(self.debug_logger, level):
+            # FIXED: Also log to debug logger ONLY if debug mode is on AND debug logger exists
+            if self.debug_mode and self.debug_logger and hasattr(self.debug_logger, level):
                 getattr(self.debug_logger, level)(message)
                 
         except Exception as e:
