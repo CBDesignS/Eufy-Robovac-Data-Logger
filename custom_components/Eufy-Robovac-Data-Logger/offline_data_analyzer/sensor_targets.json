@@ -1,0 +1,93 @@
+{
+  "metadata": {
+    "description": "Target sensor values for Eufy robovac analysis",
+    "created": "2025-06-24",
+    "device_model": "Eufy Clean X10 Pro Omni",
+    "notes": "Update these values with actual readings from your Eufy app"
+  },
+  "sensors": {
+    "rolling_brush": {
+      "description": "Main cleaning brush",
+      "hours": 357,
+      "percentage": 99,
+      "max_life_hours": 360,
+      "notes": "Primary debris collection mechanism"
+    },
+    "side_brush": {
+      "description": "Edge cleaning brush",
+      "hours": 177,
+      "percentage": 98,
+      "max_life_hours": 180,
+      "notes": "Sweeps debris into main brush path"
+    },
+    "dust_filter": {
+      "description": "Air filtration system",
+      "hours": 32,
+      "percentage": 91,
+      "max_life_hours": 35,
+      "notes": "Captures fine dust and allergens"
+    },
+    "mop_cloth": {
+      "description": "Mopping attachment",
+      "hours": 177,
+      "percentage": 98,
+      "max_life_hours": 180,
+      "notes": "For wet cleaning hard floors"
+    },
+    "cliff_sensors": {
+      "description": "Navigation sensors",
+      "hours": 32,
+      "percentage": 91,
+      "max_life_hours": 35,
+      "notes": "Prevents falls and detects obstacles"
+    },
+    "brush_guard": {
+      "description": "Brush protection component",
+      "hours": 357,
+      "percentage": 99,
+      "max_life_hours": 360,
+      "notes": "Protects main brush mechanism"
+    }
+  },
+  "analysis_settings": {
+    "search_all_keys": true,
+    "key_range": [152, 180],
+    "ignore_keys": [180],
+    "search_patterns": {
+      "hours": {
+        "single_byte": true,
+        "16_bit_be": true,
+        "16_bit_le": true,
+        "32_bit_be": false,
+        "32_bit_le": false
+      },
+      "percentage": {
+        "single_byte_only": true,
+        "range": [0, 100]
+      }
+    }
+  },
+  "instructions": [
+    "=== HOW TO USE THIS FILE ===",
+    "",
+    "1. UPDATE SENSOR VALUES:",
+    "   - Check your Eufy app for current accessory life remaining",
+    "   - Update 'hours' with actual hours remaining (e.g., 342 out of 350)",
+    "   - Update 'percentage' with actual percentage shown in app",
+    "",
+    "2. RUN ANALYSIS:",
+    "   python eufy_baseline_analyzer.py your_baseline_log.json",
+    "",
+    "3. REPEAT PROCESS:",
+    "   - Analyze 5-6 different baseline log files",
+    "   - Compare output files to find consistent key/byte locations",
+    "",
+    "4. EXAMPLE USAGE:",
+    "   python eufy_baseline_analyzer.py multi_key_baseline_20250617_150121_039.json -v",
+    "",
+    "5. BATCH ANALYSIS:",
+    "   for file in *.json; do python eufy_baseline_analyzer.py \"$file\"; done",
+    "",
+    "NOTE: Key 180 is ignored by default as it contains room configuration data."
+  ]
+}
