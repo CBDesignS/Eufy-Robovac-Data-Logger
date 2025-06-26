@@ -1,5 +1,6 @@
 {
   "name": "Eufy Robovac Data Logger",
+  "version": "4.0.4",
   "hacs": "1.32.0",
   "domains": ["sensor"],
   "iot_class": "Cloud Polling",
