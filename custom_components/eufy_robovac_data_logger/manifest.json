@@ -1,5 +1,5 @@
 {
-  "domain": "eufy-robovac-data-logger",
+  "domain": "eufy_robovac_data_logger",
   "name": "Eufy Robovac Data Logger",
   "version": "2.0.2",
   "requirements": [
@@ -7,4 +7,5 @@
     "protobuf>=3.20.0",
     "aiofiles>=23.1.0"
   ]
+
 }
