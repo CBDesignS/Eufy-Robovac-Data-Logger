@@ -1,0 +1,14 @@
+# Eufy Robovac Data Logger Services
+
+log_dps_data:
+  name: Log DPS Data
+  description: Log DPS keys 150-180 to a timestamped file
+  icon: mdi:file-export
+  fields:
+    device_id:
+      name: Device ID
+      description: The device ID of the Eufy robovac
+      required: true
+      selector:
+        text:
+      example: "T2351P1234567890"
