@@ -1,7 +1,7 @@
 """Constants for Eufy Robovac Data Logger integration."""
 
 # Integration constants - MUST STAY EXACTLY AS IS
-DOMAIN = "eufy-robovac-data-logger"
+DOMAIN = "eufy_robovac_data_logger"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_DEBUG_MODE = "debug_mode"
@@ -45,4 +45,5 @@ EUFY_X10_MODELS = {
 }
 
 # Key descriptions for debugging
+
 KEY_DESCRIPTIONS = {str(i): f"Key {i}" for i in range(150, 181)}
