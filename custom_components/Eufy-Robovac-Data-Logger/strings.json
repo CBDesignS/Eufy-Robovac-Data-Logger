@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Eufy Robovac Data Logger Setup",
+        "description": "Enter your Eufy account credentials. Devices will be discovered automatically.",
+        "data": {
+          "username": "Eufy Account Username/Email",
+          "password": "Eufy Account Password",
+          "debug_mode": "Enable Debug Logging"
+        }
+      },
+      "device_selection": {
+        "title": "Select Your Eufy Device",
+        "description": "Multiple devices found. Please select the one you want to log data from.",
+        "data": {
+          "device": "Device"
+        }
+      }
+    },
+    "error": {
+      "invalid_username": "Invalid username provided",
+      "invalid_password": "Invalid password provided",
+      "invalid_credentials": "Invalid username or password",
+      "cannot_connect": "Failed to connect to Eufy API",
+      "no_devices_found": "No devices found in your account",
+      "unknown_error": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Eufy Data Logger Options",
+        "data": {
+          "debug_mode": "Enable Debug Logging"
+        }
+      }
+    }
+  }
+}
