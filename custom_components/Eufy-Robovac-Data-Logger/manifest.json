@@ -1,7 +1,7 @@
 {
   "domain": "eufy-robovac-data-logger",
   "name": "Eufy Robovac Data Logger",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "documentation": "https://github.com/CBDesignS/Eufy-Robovac-Data-Logger",
   "issue_tracker": "https://github.com/CBDesignS/Eufy-Robovac-Data-Logger/issues",
   "dependencies": [],
