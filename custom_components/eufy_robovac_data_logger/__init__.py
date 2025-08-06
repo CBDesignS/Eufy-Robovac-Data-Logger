@@ -15,7 +15,6 @@ from .coordinator import EufyDataLoggerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 
 # Service schema for logging
@@ -139,3 +138,4 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     
 
     _LOGGER.info("Integration reloaded successfully")
+
