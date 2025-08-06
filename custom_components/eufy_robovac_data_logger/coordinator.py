@@ -250,10 +250,10 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
                 "keys_logged": len(filtered_data),
                 "dps_data": filtered_data
             }
-            
-            # Write to file
-            with open(filepath, 'w') as f:
-                json.dump(log_data, f, indent=2)
+            # Write to file asynchronously
+            import aiofiles
+            async with aiofiles.open(filepath, 'w') as f:
+                await f.write(json.dumps(log_data, indent=2))
             
             _LOGGER.info("Logged %d DPS keys to %s", len(filtered_data), filename)
             return f"Logged {len(filtered_data)} keys to {filename}"
@@ -276,4 +276,5 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
         
         # Clear references
         self._eufy_login = None
+
         self._rest_client = None
