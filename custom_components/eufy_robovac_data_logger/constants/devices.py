@@ -1,67 +1,93 @@
-"""Device constants for Eufy Robovac Data Logger - Simplified for X10 focus."""
-
-# Eufy X10 and related robovac models
 EUFY_CLEAN_DEVICES = {
-    # X10 Series (Primary focus for debugging)
-    'T2351': 'X10 Pro Omni',
-    'T2320': 'X10 Pro',
-    
-    # X8 Series (Related models)
-    'T2262': 'X8',
-    'T2261': 'X8 Hybrid',
-    'T2266': 'X8 Pro',
-    'T2276': 'X8 Pro SES',
-    
-    # G Series (Common models)
-    'T2250': 'G30',
-    'T2251': 'G30',
-    'T2252': 'G30 Verge',
-    'T2253': 'G30 Hybrid',
-    'T2254': 'G35',
-    'T2255': 'G40',
-    'T2256': 'G40 Hybrid',
-    'T2270': 'G35+',
-    'T2273': 'G40 Hybrid+',
-    
-    # L Series
-    'T2190': 'L70 Hybrid',
-    'T2267': 'L60',
-    'T2268': 'L60 Hybrid',
-    
-    # Legacy models
-    'T2080': 'S1'
+   'T1250': 'RoboVac 35C',
+   'T2103': 'RoboVac 11C',
+   'T2117': 'RoboVac 35C',
+   'T2118': 'RoboVac 30C',
+   'T2119': 'RoboVac 11S',
+   'T2120': 'RoboVac 15C MAX',
+   'T2123': 'RoboVac 25C',
+   'T2128': 'RoboVac 15C MAX',
+   'T2130': 'RoboVac 30C MAX',
+   'T2132': 'RoboVac 25C',
+   'T2150': 'RoboVac G10 Hybrid',
+   'T2181': 'RoboVac LR30 Hybrid+',
+   'T2182': 'RoboVac LR35 Hybrid+',
+   'T2190': 'RoboVac L70 Hybrid',
+   'T2192': 'RoboVac LR20',
+   'T2193': 'RoboVac LR30 Hybrid',
+   'T2194': 'RoboVac LR35 Hybrid',
+   'T2210': 'Robovac G50',
+   'T2250': 'Robovac G30',
+   'T2251': 'RoboVac G30',
+   'T2252': 'RoboVac G30 Verge',
+   'T2253': 'RoboVac G30 Hybrid',
+   'T2254': 'RoboVac G35',
+   'T2255': 'Robovac G40',
+   'T2256': 'RoboVac G40 Hybrid',
+   'T2257': 'RoboVac G20',
+   'T2258': 'RoboVac G20 Hybrid',
+   'T2259': 'RoboVac G32',
+   'T2261': 'RoboVac X8 Hybrid',
+   'T2262': 'RoboVac X8',
+   'T2266': 'Robovac X8 Pro',
+   'T2267': 'RoboVac L60',
+   'T2268': 'Robovac L60 Hybrid',
+   'T2270': 'RoboVac G35+',
+   'T2272': 'Robovac G30+ SES',
+   'T2273': 'RoboVac G40 Hybrid+',
+   'T2276': 'Robovac X8 Pro SES',
+   'T2277': 'Robovac L60 SES',
+   'T2278': 'Robovac L60 Hybrid SES',
+   'T2320': 'Robovac X9 Pro',
+   'T2351': 'Robovac X10 Pro Omni',
+   'T2080': 'Robovac S1'
 }
 
-# X10 Series specifically (for focused debugging)
-EUFY_X10_SERIES = [
-    'T2351',  # X10 Pro Omni (primary target)
-    'T2320',  # X10 Pro
+EUFY_CLEAN_X_SERIES = [
+   'T2262',
+   'T2261',
+   'T2266',
+   'T2276',
+   'T2320',
+   'T2351'
 ]
 
-# X8 Series (similar architecture)
-EUFY_X8_SERIES = [
-    'T2262',  # X8
-    'T2261',  # X8 Hybrid
-    'T2266',  # X8 Pro
-    'T2276',  # X8 Pro SES
+EUFY_CLEAN_G_SERIES = [
+   'T2210',
+   'T2250',
+   'T2251',
+   'T2252',
+   'T2253',
+   'T2254',
+   'T2255',
+   'T2256',
+   'T2257',
+   'T2258',
+   'T2259',
+   'T2270',
+   'T2272',
+   'T2273',
+   'T2277'
 ]
 
-# Models that likely support NEW Android app features
-EUFY_NEW_APP_MODELS = [
-    'T2351',  # X10 Pro Omni
-    'T2320',  # X10 Pro
-    'T2266',  # X8 Pro
-    'T2276',  # X8 Pro SES
+EUFY_CLEAN_L_SERIES = [
+   'T2190',
+   'T2267',
+   'T2268',
+   'T2278'
 ]
 
-def get_device_name(model_code: str) -> str:
-    """Get human-readable device name from model code."""
-    return EUFY_CLEAN_DEVICES.get(model_code, f"Unknown Model ({model_code})")
+EUFY_CLEAN_C_SERIES = [
+   'T1250',
+   'T2117',
+   'T2118',
+   'T2128',
+   'T2130',
+   'T2132',
+   'T2120'
+]
 
-def is_x10_series(model_code: str) -> bool:
-    """Check if device is X10 series."""
-    return model_code in EUFY_X10_SERIES
-
-def supports_new_app_features(model_code: str) -> bool:
-    """Check if device likely supports NEW Android app features."""
-    return model_code in EUFY_NEW_APP_MODELS
+EUFY_CLEAN_S_SERIES = [
+   'T2119',
+   'T2080'
+]
