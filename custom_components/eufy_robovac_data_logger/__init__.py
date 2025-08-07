@@ -79,15 +79,17 @@ async def _register_services(hass: HomeAssistant) -> None:
         except Exception as e:
             _LOGGER.error("Log service failed: %s", e)
     
-    # Register the service
-    hass.services.async_register(
-        DOMAIN,
-        "log_dps_data",
-        log_dps_data_service,
-        schema=SERVICE_LOG_DPS_DATA_SCHEMA,
-    )
-    
-    _LOGGER.info("Services registered successfully")
+    # Only register if not already registered
+    if not hass.services.has_service(DOMAIN, "log_dps_data"):
+        hass.services.async_register(
+            DOMAIN,
+            "log_dps_data",
+            log_dps_data_service,
+            schema=SERVICE_LOG_DPS_DATA_SCHEMA,
+        )
+        _LOGGER.info("Services registered successfully")
+    else:
+        _LOGGER.debug("Services already registered")
 
 
 def _get_coordinator_by_device_id(hass: HomeAssistant, device_id: str) -> EufyDataLoggerCoordinator:
@@ -136,6 +138,4 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
     
-
     _LOGGER.info("Integration reloaded successfully")
-

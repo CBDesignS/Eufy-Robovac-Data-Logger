@@ -56,8 +56,8 @@ class EufyDataLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     # Create login instance with generated UDID
                     self.openudid = f"ha_debug_{str(uuid.uuid4())[:8]}"
                     
-                    # Import here to avoid circular imports
-                    from .controllers.login import EufyLogin
+                    # Import with correct case sensitivity
+                    from .controllers.Login import EufyLogin
                     
                     eufy_login = EufyLogin(
                         username=user_input[CONF_USERNAME],

@@ -38,9 +38,10 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
         
         # Connection tracking
         self._eufy_login = None
-        self._rest_client = None
+        self._mqtt_connect = None
         self._last_successful_update = None
         self._consecutive_failures = 0
+        self._event_loop = None
         
         # Log directory setup
         self.log_dir = Path(hass.config.config_dir) / LOG_DIR
@@ -58,6 +59,9 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
     async def async_config_entry_first_refresh(self) -> None:
         """Handle first refresh."""
         try:
+            # Store event loop for MQTT callbacks
+            self._event_loop = asyncio.get_running_loop()
+            
             # Initialize connections
             await self._initialize_connections()
             
@@ -73,8 +77,8 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.info("Initializing connections...")
             
-            # Import here to avoid circular imports
-            from .controllers.login import EufyLogin
+            # Import with correct case sensitivity
+            from .controllers.Login import EufyLogin
             
             # Create login instance first
             self._eufy_login = EufyLogin(
@@ -83,37 +87,59 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
                 openudid=self.openudid
             )
             
-            # Initialize login to get authentication
-            await self._eufy_login.init()
-            _LOGGER.info("EufyLogin initialized successfully")
+            # Initialize login to get authentication and devices
+            devices = await self._eufy_login.init()
+            _LOGGER.info("EufyLogin initialized successfully, found %d devices", len(devices) if devices else 0)
             
-            # Try to create RestConnect client
-            try:
-                from .controllers.rest_connect import RestConnect
-                
-                rest_config = {
-                    'deviceId': self.device_id,
-                    'deviceModel': self.device_model,
-                    'debug': self.debug_mode
-                }
-                
-                self._rest_client = RestConnect(
-                    config=rest_config,
-                    openudid=self.openudid,
-                    eufyCleanApi=self._eufy_login
-                )
-                
-                # Try to connect
-                await self._rest_client.connect()
-                _LOGGER.info("RestConnect client initialized and connected")
-                
-            except Exception as rest_error:
-                _LOGGER.warning("RestConnect not available: %s, using basic login only", rest_error)
-                self._rest_client = None
+            # Check if we have MQTT credentials
+            if self._eufy_login.mqtt_credentials:
+                try:
+                    # Import MqttConnect with correct case
+                    from .controllers.MqttConnect import MqttConnect
+                    
+                    # Create config for MqttConnect
+                    mqtt_config = {
+                        'deviceId': self.device_id,
+                        'deviceModel': self.device_model,
+                        'debug': self.debug_mode
+                    }
+                    
+                    # Create MqttConnect instance
+                    self._mqtt_connect = MqttConnect(
+                        config=mqtt_config,
+                        openudid=self.openudid,
+                        eufyCleanApi=self._eufy_login
+                    )
+                    
+                    # Store event loop reference in MqttConnect for callbacks
+                    self._mqtt_connect._loop = self._event_loop
+                    
+                    # Add listener for data updates
+                    self._mqtt_connect.add_listener(self._handle_mqtt_update)
+                    
+                    # Connect to MQTT
+                    await self._mqtt_connect.connect()
+                    _LOGGER.info("MqttConnect initialized and connected successfully")
+                    
+                except Exception as mqtt_error:
+                    _LOGGER.error(f"Failed to initialize MqttConnect: {mqtt_error}")
+                    self._mqtt_connect = None
+            else:
+                _LOGGER.warning("No MQTT credentials available from login")
+                self._mqtt_connect = None
             
         except Exception as e:
             _LOGGER.error("Failed to initialize connections: %s", e)
             raise
+
+    async def _handle_mqtt_update(self):
+        """Handle update from MQTT - called by MqttConnect when data arrives."""
+        try:
+            # MQTT has updated the data, refresh our state
+            _LOGGER.debug("MQTT data update received")
+            await self.async_request_refresh()
+        except Exception as e:
+            _LOGGER.error(f"Error handling MQTT update: {e}")
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Fetch data from Eufy API."""
@@ -123,15 +149,18 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             if self.debug_mode:
                 _LOGGER.debug("Update #%d starting", self.update_count)
             
-            # Fetch data using RestConnect or fallback to basic login
+            # Fetch data from MQTT connection
             await self._fetch_eufy_data()
             
             # Process basic data for status sensor
             self._process_basic_data()
             
-            # Reset consecutive failures on success
-            self._consecutive_failures = 0
-            self._last_successful_update = time.time()
+            # Reset consecutive failures on success if we have data
+            if self.raw_data:
+                self._consecutive_failures = 0
+                self._last_successful_update = time.time()
+            else:
+                self._consecutive_failures += 1
             
             self.last_update = time.time()
             
@@ -147,47 +176,56 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}")
 
     async def _fetch_eufy_data(self) -> None:
-        """Fetch data from Eufy API using RestConnect or basic login."""
+        """Fetch data from MqttConnect."""
         try:
             data_source = "Unknown"
             
-            # Try RestConnect first (if available)
-            if self._rest_client:
-                try:
-                    # Use RestConnect to get data
-                    await self._rest_client.updateDevice()
-                    rest_data = self._rest_client.get_raw_data()
+            if self._mqtt_connect:
+                # Get the raw DPS data from MqttConnect
+                # MqttConnect stores data in robovac_data dictionary
+                mqtt_data = await self._mqtt_connect.get_robovac_data()
+                
+                if mqtt_data:
+                    # Map the data to our expected format
+                    # The robovac_data has semantic keys, but we need DPS keys for logging
+                    # We need to reverse map from semantic names to DPS keys
+                    dps_data = {}
                     
-                    if rest_data:
-                        self.raw_data = rest_data
-                        data_source = "RestConnect"
-                        if self.debug_mode:
-                            _LOGGER.debug("RestConnect fetch successful: %d keys", len(self.raw_data))
-                    else:
-                        raise Exception("RestConnect returned no data")
-                        
-                except Exception as rest_error:
-                    _LOGGER.warning("RestConnect failed: %s, falling back to basic login", rest_error)
-                    self._rest_client = None
-            
-            # Use basic login (fallback or primary)
-            if not self._rest_client or not self.raw_data:
-                if self.debug_mode:
-                    _LOGGER.debug("Using basic login for data fetch...")
-                
-                if not self._eufy_login:
-                    raise Exception("No authentication method available")
-                
-                # Get device data with DPS
-                device_data = await self._eufy_login.getMqttDevice(self.device_id)
-                
-                if device_data and 'dps' in device_data:
-                    self.raw_data = device_data['dps']
-                    data_source = "Basic Login"
+                    # Get the dps_map from MqttConnect
+                    for semantic_key, dps_key in self._mqtt_connect.dps_map.items():
+                        if semantic_key in mqtt_data:
+                            dps_data[dps_key] = mqtt_data[semantic_key]
+                    
+                    # Also check if there's raw DPS data directly
+                    # MqttConnect might have raw DPS keys too
+                    for key in range(150, 181):
+                        str_key = str(key)
+                        if str_key in mqtt_data:
+                            dps_data[str_key] = mqtt_data[str_key]
+                    
+                    self.raw_data = dps_data
+                    data_source = "MQTT"
+                    
                     if self.debug_mode:
-                        _LOGGER.debug("Basic login fetch successful: %d keys", len(self.raw_data))
+                        _LOGGER.debug(f"MQTT fetch: {len(dps_data)} DPS keys")
                 else:
-                    raise Exception("Basic login returned no data")
+                    # No data yet from MQTT (might be waiting for first message)
+                    if not self.raw_data:
+                        _LOGGER.info("Waiting for MQTT data...")
+                    data_source = "MQTT (waiting)"
+            else:
+                # Try to get data directly from login if no MQTT
+                if self._eufy_login:
+                    try:
+                        device = await self._eufy_login.getMqttDevice(self.device_id)
+                        if device and 'dps' in device:
+                            self.raw_data = device['dps']
+                            data_source = "API"
+                            if self.debug_mode:
+                                _LOGGER.debug(f"API fetch: {len(self.raw_data)} keys")
+                    except Exception as api_error:
+                        _LOGGER.error(f"API fetch failed: {api_error}")
+                        data_source = "Failed"
             
             # Store data source for status
             self.parsed_data["data_source"] = data_source
@@ -196,7 +234,7 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             self.parsed_data["update_count"] = self.update_count
             
         except Exception as e:
-            _LOGGER.error("All data fetch methods failed: %s", e)
+            _LOGGER.error("Data fetch failed: %s", e)
             raise
 
     def _process_basic_data(self) -> None:
@@ -212,8 +250,17 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             self.parsed_data["target_keys_count"] = len(target_keys_found)
             
             # Connection status
-            self.parsed_data["is_connected"] = len(self.raw_data) > 0
+            self.parsed_data["is_connected"] = bool(self._mqtt_connect or self._eufy_login)
             self.parsed_data["consecutive_failures"] = self._consecutive_failures
+            
+            # Add MQTT status
+            if self._mqtt_connect:
+                if hasattr(self._mqtt_connect, 'mqttClient') and self._mqtt_connect.mqttClient:
+                    self.parsed_data["mqtt_connected"] = self._mqtt_connect.mqttClient.is_connected()
+                else:
+                    self.parsed_data["mqtt_connected"] = False
+            else:
+                self.parsed_data["mqtt_connected"] = False
             
         except Exception as e:
             _LOGGER.error("Error processing basic data: %s", e)
@@ -250,6 +297,7 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
                 "keys_logged": len(filtered_data),
                 "dps_data": filtered_data
             }
+            
             # Write to file asynchronously
             import aiofiles
             async with aiofiles.open(filepath, 'w') as f:
@@ -266,15 +314,18 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
         """Shutdown the coordinator."""
         _LOGGER.info("Coordinator shutdown")
         
-        # Shutdown RestConnect client if exists
-        if self._rest_client:
+        # Disconnect MQTT if exists
+        if self._mqtt_connect:
             try:
-                await self._rest_client.stop_polling()
-                _LOGGER.info("RestConnect client disconnected")
+                # MqttConnect has mqttClient that needs to be disconnected
+                if hasattr(self._mqtt_connect, 'mqttClient') and self._mqtt_connect.mqttClient:
+                    self._mqtt_connect.mqttClient.disconnect()
+                    self._mqtt_connect.mqttClient.loop_stop()
+                _LOGGER.info("MQTT client disconnected")
             except Exception as e:
-                _LOGGER.error("Error disconnecting RestConnect: %s", e)
+                _LOGGER.error("Error disconnecting MQTT: %s", e)
         
         # Clear references
         self._eufy_login = None
-
-        self._rest_client = None
+        self._mqtt_connect = None
+        self._event_loop = None

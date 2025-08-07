@@ -88,6 +88,7 @@ class EufyDataLoggerStatusSensor(CoordinatorEntity, SensorEntity):
             "target_keys_found": self.coordinator.data.get("target_keys_count", 0),
             "target_keys_list": self.coordinator.data.get("target_keys_found", []),
             "consecutive_failures": self.coordinator.data.get("consecutive_failures", 0),
+            "mqtt_connected": self.coordinator.data.get("mqtt_connected", False),
             "log_directory": f"/config/{self.coordinator.log_dir.name}",
             "service_call": f"eufy_robovac_data_logger.log_dps_data",
             "service_data": {"device_id": self.device_id},
