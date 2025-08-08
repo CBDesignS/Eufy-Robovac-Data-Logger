@@ -38,7 +38,7 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
         
         # Connection tracking
         self._eufy_login = None
-        self._mqtt_connect = None
+        self._shared_connect = None  # Changed from _mqtt_connect to _shared_connect
         self._last_successful_update = None
         self._consecutive_failures = 0
         self._event_loop = None
@@ -88,55 +88,76 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             )
             
             # Initialize login to get authentication and devices
-            devices = await self._eufy_login.init()
+            await self._eufy_login.init()
+            devices = self._eufy_login.mqtt_devices  # Get from property
             _LOGGER.info("EufyLogin initialized successfully, found %d devices", len(devices) if devices else 0)
+            
+            # Find our device config
+            device_config = None
+            for device in devices:
+                if device.get('deviceId') == self.device_id:
+                    device_config = device
+                    break
+            
+            if not device_config:
+                _LOGGER.error("Device %s not found in login results", self.device_id)
+                raise Exception(f"Device {self.device_id} not found")
             
             # Check if we have MQTT credentials
             if self._eufy_login.mqtt_credentials:
                 try:
-                    # Import MqttConnect with correct case
-                    from .controllers.MqttConnect import MqttConnect
+                    # Import DataLoggerConnect - extends SharedConnect to capture raw DPS
+                    from .data_logger_connect import DataLoggerConnect
                     
-                    # Create config for MqttConnect
-                    mqtt_config = {
-                        'deviceId': self.device_id,
-                        'deviceModel': self.device_model,
+                    # Create config for DataLoggerConnect - use the device config from login
+                    shared_config = {
+                        'deviceId': device_config['deviceId'],
+                        'deviceModel': device_config['deviceModel'],
+                        'apiType': device_config.get('apiType', 'novel'),
+                        'mqtt': device_config.get('mqtt', True),
                         'debug': self.debug_mode
                     }
                     
-                    # Create MqttConnect instance
-                    self._mqtt_connect = MqttConnect(
-                        config=mqtt_config,
+                    _LOGGER.info("Creating DataLoggerConnect with config: %s", shared_config)
+                    
+                    # Create DataLoggerConnect instance (extends SharedConnect with raw DPS capture)
+                    self._shared_connect = DataLoggerConnect(
+                        config=shared_config,
                         openudid=self.openudid,
                         eufyCleanApi=self._eufy_login
                     )
                     
-                    # Store event loop reference in MqttConnect for callbacks
-                    self._mqtt_connect._loop = self._event_loop
+                    # Store event loop reference for callbacks
+                    self._shared_connect._loop = self._event_loop
                     
                     # Add listener for data updates
-                    self._mqtt_connect.add_listener(self._handle_mqtt_update)
+                    self._shared_connect.add_listener(self._handle_mqtt_update)
                     
-                    # Connect to MQTT
-                    await self._mqtt_connect.connect()
-                    _LOGGER.info("MqttConnect initialized and connected successfully")
+                    # Connect to MQTT and send initial commands to get DPS data
+                    _LOGGER.info("Connecting SharedConnect...")
+                    await self._shared_connect.connect()
+                    _LOGGER.info("SharedConnect connected successfully - DPS data should start flowing")
                     
-                except Exception as mqtt_error:
-                    _LOGGER.error(f"Failed to initialize MqttConnect: {mqtt_error}")
-                    self._mqtt_connect = None
+                except Exception as shared_error:
+                    _LOGGER.error(f"Failed to initialize SharedConnect: {shared_error}")
+                    import traceback
+                    _LOGGER.error(traceback.format_exc())
+                    self._shared_connect = None
             else:
                 _LOGGER.warning("No MQTT credentials available from login")
-                self._mqtt_connect = None
+                self._shared_connect = None
             
         except Exception as e:
             _LOGGER.error("Failed to initialize connections: %s", e)
+            import traceback
+            _LOGGER.error(traceback.format_exc())
             raise
 
     async def _handle_mqtt_update(self):
-        """Handle update from MQTT - called by MqttConnect when data arrives."""
+        """Handle update from MQTT - called by SharedConnect when data arrives."""
         try:
             # MQTT has updated the data, refresh our state
-            _LOGGER.debug("MQTT data update received")
+            _LOGGER.debug("MQTT data update received from SharedConnect")
             await self.async_request_refresh()
         except Exception as e:
             _LOGGER.error(f"Error handling MQTT update: {e}")
@@ -149,7 +170,7 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             if self.debug_mode:
                 _LOGGER.debug("Update #%d starting", self.update_count)
             
-            # Fetch data from MQTT connection
+            # Fetch data from SharedConnect
             await self._fetch_eufy_data()
             
             # Process basic data for status sensor
@@ -176,56 +197,32 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}")
 
     async def _fetch_eufy_data(self) -> None:
-        """Fetch data from MqttConnect."""
+        """Fetch data from DataLoggerConnect."""
         try:
             data_source = "Unknown"
             
-            if self._mqtt_connect:
-                # Get the raw DPS data from MqttConnect
-                # MqttConnect stores data in robovac_data dictionary
-                mqtt_data = await self._mqtt_connect.get_robovac_data()
+            if self._shared_connect:
+                # DataLoggerConnect stores raw DPS data separately
+                # Get the raw DPS keys for logging
+                raw_dps = self._shared_connect.get_raw_dps_data()
                 
-                if mqtt_data:
-                    # Map the data to our expected format
-                    # The robovac_data has semantic keys, but we need DPS keys for logging
-                    # We need to reverse map from semantic names to DPS keys
-                    dps_data = {}
+                if raw_dps:
+                    self.raw_data = raw_dps
+                    data_source = "MQTT (DataLoggerConnect)"
                     
-                    # Get the dps_map from MqttConnect
-                    for semantic_key, dps_key in self._mqtt_connect.dps_map.items():
-                        if semantic_key in mqtt_data:
-                            dps_data[dps_key] = mqtt_data[semantic_key]
+                    # Log keys 150-180 specifically
+                    keys_150_180 = self._shared_connect.get_dps_keys_150_180()
+                    if keys_150_180:
+                        _LOGGER.info("Got %d keys in range 150-180", len(keys_150_180))
                     
-                    # Also check if there's raw DPS data directly
-                    # MqttConnect might have raw DPS keys too
-                    for key in range(150, 181):
-                        str_key = str(key)
-                        if str_key in mqtt_data:
-                            dps_data[str_key] = mqtt_data[str_key]
-                    
-                    self.raw_data = dps_data
-                    data_source = "MQTT"
-                    
-                    if self.debug_mode:
-                        _LOGGER.debug(f"MQTT fetch: {len(dps_data)} DPS keys")
+                    _LOGGER.debug("Total raw DPS keys available: %d", len(raw_dps))
                 else:
-                    # No data yet from MQTT (might be waiting for first message)
-                    if not self.raw_data:
-                        _LOGGER.info("Waiting for MQTT data...")
-                    data_source = "MQTT (waiting)"
+                    # Connected but no DPS data yet
+                    _LOGGER.debug("DataLoggerConnect connected but no DPS data received yet")
+                    data_source = "MQTT (waiting for data)"
             else:
-                # Try to get data directly from login if no MQTT
-                if self._eufy_login:
-                    try:
-                        device = await self._eufy_login.getMqttDevice(self.device_id)
-                        if device and 'dps' in device:
-                            self.raw_data = device['dps']
-                            data_source = "API"
-                            if self.debug_mode:
-                                _LOGGER.debug(f"API fetch: {len(self.raw_data)} keys")
-                    except Exception as api_error:
-                        _LOGGER.error(f"API fetch failed: {api_error}")
-                        data_source = "Failed"
+                _LOGGER.warning("No DataLoggerConnect instance available")
+                data_source = "None"
             
             # Store data source for status
             self.parsed_data["data_source"] = data_source
@@ -250,13 +247,13 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             self.parsed_data["target_keys_count"] = len(target_keys_found)
             
             # Connection status
-            self.parsed_data["is_connected"] = bool(self._mqtt_connect or self._eufy_login)
+            self.parsed_data["is_connected"] = bool(self._shared_connect)
             self.parsed_data["consecutive_failures"] = self._consecutive_failures
             
             # Add MQTT status
-            if self._mqtt_connect:
-                if hasattr(self._mqtt_connect, 'mqttClient') and self._mqtt_connect.mqttClient:
-                    self.parsed_data["mqtt_connected"] = self._mqtt_connect.mqttClient.is_connected()
+            if self._shared_connect:
+                if hasattr(self._shared_connect, 'mqttClient') and self._shared_connect.mqttClient:
+                    self.parsed_data["mqtt_connected"] = self._shared_connect.mqttClient.is_connected()
                 else:
                     self.parsed_data["mqtt_connected"] = False
             else:
@@ -314,18 +311,18 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
         """Shutdown the coordinator."""
         _LOGGER.info("Coordinator shutdown")
         
-        # Disconnect MQTT if exists
-        if self._mqtt_connect:
+        # Disconnect SharedConnect if exists
+        if self._shared_connect:
             try:
-                # MqttConnect has mqttClient that needs to be disconnected
-                if hasattr(self._mqtt_connect, 'mqttClient') and self._mqtt_connect.mqttClient:
-                    self._mqtt_connect.mqttClient.disconnect()
-                    self._mqtt_connect.mqttClient.loop_stop()
+                # SharedConnect inherits from MqttConnect so has mqttClient
+                if hasattr(self._shared_connect, 'mqttClient') and self._shared_connect.mqttClient:
+                    self._shared_connect.mqttClient.disconnect()
+                    self._shared_connect.mqttClient.loop_stop()
                 _LOGGER.info("MQTT client disconnected")
             except Exception as e:
                 _LOGGER.error("Error disconnecting MQTT: %s", e)
         
         # Clear references
         self._eufy_login = None
-        self._mqtt_connect = None
+        self._shared_connect = None
         self._event_loop = None
