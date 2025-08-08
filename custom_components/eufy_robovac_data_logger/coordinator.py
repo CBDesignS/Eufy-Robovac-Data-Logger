@@ -106,26 +106,24 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             # Check if we have MQTT credentials
             if self._eufy_login.mqtt_credentials:
                 try:
-                    # Import DataLoggerConnect - extends SharedConnect to capture raw DPS
-                    from .data_logger_connect import DataLoggerConnect
+                    # Import SharedConnect - WORKING IN ORIGINAL
+                    from .controllers.SharedConnect import SharedConnect
                     
-                    # Create config for DataLoggerConnect - use the device config from login
+                    # Create config for SharedConnect - PUT EVERYTHING IN CONFIG
                     shared_config = {
                         'deviceId': device_config['deviceId'],
                         'deviceModel': device_config['deviceModel'],
                         'apiType': device_config.get('apiType', 'novel'),
                         'mqtt': device_config.get('mqtt', True),
-                        'debug': self.debug_mode
+                        'debug': self.debug_mode,
+                        'openudid': self.openudid,
+                        'eufyCleanApi': self._eufy_login
                     }
                     
-                    _LOGGER.info("Creating DataLoggerConnect with config: %s", shared_config)
+                    _LOGGER.info("Creating SharedConnect with config: %s", shared_config)
                     
-                    # Create DataLoggerConnect instance (extends SharedConnect with raw DPS capture)
-                    self._shared_connect = DataLoggerConnect(
-                        config=shared_config,
-                        openudid=self.openudid,
-                        eufyCleanApi=self._eufy_login
-                    )
+                    # Create SharedConnect instance - ONLY CONFIG ARGUMENT
+                    self._shared_connect = SharedConnect(shared_config)
                     
                     # Store event loop reference for callbacks
                     self._shared_connect._loop = self._event_loop
@@ -197,31 +195,31 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}")
 
     async def _fetch_eufy_data(self) -> None:
-        """Fetch data from DataLoggerConnect."""
+        """Fetch data from SharedConnect."""
         try:
             data_source = "Unknown"
             
             if self._shared_connect:
-                # DataLoggerConnect stores raw DPS data separately
-                # Get the raw DPS keys for logging
-                raw_dps = self._shared_connect.get_raw_dps_data()
+                # MqttConnect on_message stores DPS in self.robovac_data
+                # Line 186-187 in MqttConnect: self.robovac_data[command_name] = payload_data[command_name]
+                # This IS the raw DPS data - keys like '150', '151', etc
                 
-                if raw_dps:
-                    self.raw_data = raw_dps
-                    data_source = "MQTT (DataLoggerConnect)"
+                if hasattr(self._shared_connect, 'robovac_data'):
+                    # This HAS the DPS keys!
+                    self.raw_data = self._shared_connect.robovac_data.copy()
                     
-                    # Log keys 150-180 specifically
-                    keys_150_180 = self._shared_connect.get_dps_keys_150_180()
-                    if keys_150_180:
-                        _LOGGER.info("Got %d keys in range 150-180", len(keys_150_180))
-                    
-                    _LOGGER.debug("Total raw DPS keys available: %d", len(raw_dps))
-                else:
-                    # Connected but no DPS data yet
-                    _LOGGER.debug("DataLoggerConnect connected but no DPS data received yet")
-                    data_source = "MQTT (waiting for data)"
+                    if self.raw_data:
+                        data_source = "MQTT (DPS Data)"
+                        # Count keys 150-180
+                        keys_150_180 = [k for k in self.raw_data.keys() if k.isdigit() and 150 <= int(k) <= 180]
+                        if keys_150_180:
+                            _LOGGER.info("Got %d DPS keys in range 150-180: %s", len(keys_150_180), keys_150_180)
+                        _LOGGER.debug("Total DPS keys available: %d", len(self.raw_data))
+                    else:
+                        data_source = "MQTT (Waiting for data)"
+                        _LOGGER.debug("Connected but no DPS data yet")
             else:
-                _LOGGER.warning("No DataLoggerConnect instance available")
+                _LOGGER.warning("No SharedConnect instance available")
                 data_source = "None"
             
             # Store data source for status
