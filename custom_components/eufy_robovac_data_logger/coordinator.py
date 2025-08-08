@@ -109,10 +109,10 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
                     # Import SharedConnect - WORKING IN ORIGINAL
                     from .controllers.SharedConnect import SharedConnect
                     
-                    # Create config for SharedConnect - PUT EVERYTHING IN CONFIG
+                    # Create config for SharedConnect - USE THE CORRECT FUCKING KEYS
                     shared_config = {
-                        'deviceId': device_config['deviceId'],
-                        'deviceModel': device_config['deviceModel'],
+                        'device_id': device_config['deviceId'],  # SharedConnect expects 'device_id'
+                        'model': device_config['deviceModel'],   # SharedConnect expects 'model'
                         'apiType': device_config.get('apiType', 'novel'),
                         'mqtt': device_config.get('mqtt', True),
                         'debug': self.debug_mode,
