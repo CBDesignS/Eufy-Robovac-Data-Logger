@@ -66,7 +66,8 @@ class EufyDataLoggerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
                     
                     # Initialize and get devices
-                    devices = await eufy_login.init()
+                    await eufy_login.init()
+                    devices = eufy_login.mqtt_devices  # Get devices from the property
                     
                     if not devices:
                         _LOGGER.error("No devices found for account")
