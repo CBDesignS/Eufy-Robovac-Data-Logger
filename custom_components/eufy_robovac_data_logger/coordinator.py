@@ -107,7 +107,7 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             if self._eufy_login.mqtt_credentials:
                 try:
                     # Import SharedConnect - WORKING IN ORIGINAL
-                    from .controllers.SharedConnect import SharedConnect
+                    from .controllers.MqttConnect import MqttConnect
                     
                     # Create config for SharedConnect - EVERYTHING IN CONFIG LIKE THE WORKING INTEGRATION
                     shared_config = {
@@ -123,7 +123,7 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("Creating SharedConnect with config: %s", {k: v for k, v in shared_config.items() if k != 'eufyCleanApi'})
                     
                     # Create SharedConnect instance - ONLY CONFIG ARGUMENT
-                    self._shared_connect = SharedConnect(shared_config)
+                    self._shared_connect = MqttConnect(mqtt_config, self.openudid, self._eufy_login)
                     
                     # NO NEED TO SET _loop or anything else - SharedConnect handles it
                     
