@@ -109,24 +109,23 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
                     # Import SharedConnect - WORKING IN ORIGINAL
                     from .controllers.SharedConnect import SharedConnect
                     
-                    # Create config for SharedConnect - USE CAMELCASE KEYS LIKE SHAREDCONNECT EXPECTS
+                    # Create config for SharedConnect - EVERYTHING IN CONFIG LIKE THE WORKING INTEGRATION
                     shared_config = {
-                        'deviceId': device_config['deviceId'],     # SharedConnect expects 'deviceId'
-                        'deviceModel': device_config['deviceModel'], # SharedConnect expects 'deviceModel'
+                        'deviceId': device_config['deviceId'],
+                        'deviceModel': device_config['deviceModel'],
                         'apiType': device_config.get('apiType', 'novel'),
                         'mqtt': device_config.get('mqtt', True),
                         'debug': self.debug_mode,
-                        'openudid': self.openudid,
-                        'eufyCleanApi': self._eufy_login
+                        'openudid': self.openudid,              # IN THE CONFIG
+                        'eufyCleanApi': self._eufy_login         # IN THE CONFIG
                     }
                     
-                    _LOGGER.info("Creating SharedConnect with config: %s", shared_config)
+                    _LOGGER.info("Creating SharedConnect with config: %s", {k: v for k, v in shared_config.items() if k != 'eufyCleanApi'})
                     
                     # Create SharedConnect instance - ONLY CONFIG ARGUMENT
                     self._shared_connect = SharedConnect(shared_config)
                     
-                    # Store event loop reference for callbacks
-                    self._shared_connect._loop = self._event_loop
+                    # NO NEED TO SET _loop or anything else - SharedConnect handles it
                     
                     # Add listener for data updates
                     self._shared_connect.add_listener(self._handle_mqtt_update)
@@ -200,6 +199,8 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
             data_source = "Unknown"
             
             if self._shared_connect:
+                _LOGGER.debug("Fetching data from SharedConnect...")
+                
                 # MqttConnect on_message stores DPS in self.robovac_data
                 # Line 186-187 in MqttConnect: self.robovac_data[command_name] = payload_data[command_name]
                 # This IS the raw DPS data - keys like '150', '151', etc
@@ -215,9 +216,20 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
                         if keys_150_180:
                             _LOGGER.info("Got %d DPS keys in range 150-180: %s", len(keys_150_180), keys_150_180)
                         _LOGGER.debug("Total DPS keys available: %d", len(self.raw_data))
+                        _LOGGER.debug("All DPS keys: %s", list(self.raw_data.keys()))
                     else:
                         data_source = "MQTT (Waiting for data)"
-                        _LOGGER.debug("Connected but no DPS data yet")
+                        _LOGGER.debug("Connected but no DPS data yet in robovac_data")
+                else:
+                    _LOGGER.warning("SharedConnect has no robovac_data attribute")
+                
+                # Check MQTT connection
+                if hasattr(self._shared_connect, 'mqttClient'):
+                    if self._shared_connect.mqttClient:
+                        is_connected = self._shared_connect.mqttClient.is_connected()
+                        _LOGGER.debug("MQTT client connection status: %s", is_connected)
+                    else:
+                        _LOGGER.debug("MQTT client is None")
             else:
                 _LOGGER.warning("No SharedConnect instance available")
                 data_source = "None"
