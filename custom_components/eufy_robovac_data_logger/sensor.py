@@ -45,19 +45,24 @@ class EufyDataLoggerStatusSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.device_id = coordinator.device_id
+        self.device_model = coordinator.device_model
+        self.device_model_name = coordinator.device_model_name  # USE THE LOOKED UP NAME
         
         self._attr_unique_id = f"{self.device_id}_status"
         self._attr_name = f"Eufy Data Logger Status"
         self._attr_icon = "mdi:database"
+        
+        # USE THE PROPER DEVICE NAME FROM CONSTANTS
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, self.device_id)},
-            name=f"Eufy Data Logger {coordinator.device_name}",
+            name=f"{self.device_model_name} Data Logger",  # USE THE PROPER NAME
             manufacturer="Eufy",
-            model=coordinator.device_model,
+            model=self.device_model_name,  # USE THE PROPER NAME
             sw_version="1.0.0",
         )
         
-        _LOGGER.debug("Initialized status sensor for device %s", self.device_id)
+        _LOGGER.debug("Initialized status sensor for device %s (%s)", 
+                     self.device_id, self.device_model_name)
 
     @property
     def native_value(self) -> str:
@@ -80,7 +85,7 @@ class EufyDataLoggerStatusSensor(CoordinatorEntity, SensorEntity):
         attrs = {
             "device_id": self.device_id,
             "device_name": self.coordinator.device_name,
-            "device_model": self.coordinator.device_model,
+            "device_model": f"{self.device_model} ({self.device_model_name})",
             "data_source": self.coordinator.data.get("data_source", "Unknown"),
             "last_update": self.coordinator.data.get("last_update"),
             "update_count": self.coordinator.data.get("update_count", 0),
@@ -89,7 +94,7 @@ class EufyDataLoggerStatusSensor(CoordinatorEntity, SensorEntity):
             "target_keys_list": self.coordinator.data.get("target_keys_found", []),
             "consecutive_failures": self.coordinator.data.get("consecutive_failures", 0),
             "mqtt_connected": self.coordinator.data.get("mqtt_connected", False),
-            "log_directory": f"/config/{self.coordinator.log_dir.name}",
+            "log_directory": f"/config/{self.coordinator.log_dir.name}/{self.device_id}",
             "service_call": f"eufy_robovac_data_logger.log_dps_data",
             "service_data": {"device_id": self.device_id},
         }

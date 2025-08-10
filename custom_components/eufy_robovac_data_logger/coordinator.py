@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, UPDATE_INTERVAL, DPS_KEYS_TO_LOG, LOG_DIR, CONF_DEBUG_MODE
+from .constants.devices import EUFY_CLEAN_DEVICES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,6 +27,10 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
         self.device_id = entry.data["device_id"]
         self.device_name = entry.data.get("device_name", "Unknown Device")
         self.device_model = entry.data.get("device_model", "T8213")
+        
+        # LOOK UP THE FUCKING DEVICE NAME FROM CONSTANTS
+        self.device_model_name = EUFY_CLEAN_DEVICES.get(self.device_model, self.device_model)
+        
         self.username = entry.data["username"]
         self.password = entry.data["password"]
         # Generate openudid like eufy-clean does
@@ -49,8 +54,8 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
         self.log_dir.mkdir(exist_ok=True)
         
         _LOGGER.info("Initializing Eufy Data Logger for device: %s", self.device_id)
+        _LOGGER.info("Device Model: %s (%s)", self.device_model, self.device_model_name)
         _LOGGER.debug("Device Name: %s", self.device_name)
-        _LOGGER.debug("Device Model: %s", self.device_model)
         _LOGGER.debug("OpenUDID: %s", self.openudid)
         
         super().__init__(
@@ -270,6 +275,7 @@ class EufyDataLoggerCoordinator(DataUpdateCoordinator):
                 "device_id": self.device_id,
                 "device_name": self.device_name,
                 "device_model": self.device_model,
+                "device_model_name": self.device_model_name,  # Include the looked up name
                 "update_count": self.update_count,
                 "keys": self.raw_dps_data
             }
