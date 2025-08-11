@@ -1,21 +1,18 @@
 """Sensor platform for Eufy Robovac Data Logger integration."""
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorDeviceClass,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, DPS_KEYS_TO_LOG
-from .coordinator import EufyDataLoggerCoordinator
+from .constants.devices import EUFY_CLEAN_DEVICES
+
+# FIX: Use our DOMAIN and get devices directly
+DOMAIN = "eufy_robovac_data_logger"
+DEVICES = "devices"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,83 +23,90 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Eufy Data Logger sensors."""
-    coordinator: EufyDataLoggerCoordinator = hass.data[DOMAIN][entry.entry_id]
     
-    # Create just one status sensor
-    entities = [
-        EufyDataLoggerStatusSensor(coordinator),
-    ]
+    # FIX: Get devices from hass.data, not a coordinator
+    devices = hass.data[DOMAIN][DEVICES]
     
-    _LOGGER.info("Setting up sensor for device %s", coordinator.device_id)
+    entities = []
+    for device_id, device in devices.items():
+        _LOGGER.info("Setting up sensor for device %s", device_id)
+        entities.append(EufyDataLoggerStatusSensor(device, device_id))
     
     async_add_entities(entities)
 
 
-class EufyDataLoggerStatusSensor(CoordinatorEntity, SensorEntity):
+class EufyDataLoggerStatusSensor(SensorEntity):
     """Status sensor for Eufy Data Logger."""
 
-    def __init__(self, coordinator: EufyDataLoggerCoordinator) -> None:
+    def __init__(self, device, device_id: str) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
-        self.device_id = coordinator.device_id
-        self.device_model = coordinator.device_model
-        self.device_model_name = coordinator.device_model_name  # USE THE LOOKED UP NAME
+        self.device = device
+        self.device_id = device_id
         
-        self._attr_unique_id = f"{self.device_id}_status"
-        self._attr_name = f"Eufy Data Logger Status"
+        # Get device info
+        self.device_model = device.device_model if hasattr(device, 'device_model') else "Unknown"
+        self.device_name = device.device_model_desc if hasattr(device, 'device_model_desc') else device_id
+        self.device_model_name = EUFY_CLEAN_DEVICES.get(self.device_model, self.device_model)
+        
+        self._attr_unique_id = f"{device_id}_dps_status"
+        self._attr_name = "DPS Data Status"
         self._attr_icon = "mdi:database"
         
-        # USE THE PROPER DEVICE NAME FROM CONSTANTS
+        # Device info matching vacuum and button
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, self.device_id)},
-            name=f"{self.device_model_name} Data Logger",  # USE THE PROPER NAME
+            identifiers={(DOMAIN, device_id)},
+            name=self.device_name,
             manufacturer="Eufy",
-            model=self.device_model_name,  # USE THE PROPER NAME
-            sw_version="1.0.0",
+            model=self.device_model,
         )
         
-        _LOGGER.debug("Initialized status sensor for device %s (%s)", 
-                     self.device_id, self.device_model_name)
+        # Track DPS data
+        self._dps_keys_found = 0
+        self._last_update = None
 
     @property
     def native_value(self) -> str:
         """Return the status."""
-        if self.coordinator.data.get("is_connected"):
-            keys_found = self.coordinator.data.get("target_keys_count", 0)
-            total_keys = len(DPS_KEYS_TO_LOG)
-            return f"{keys_found}/{total_keys} keys"
+        if hasattr(self.device, 'robovac_data'):
+            # Count DPS keys 150-180
+            self._dps_keys_found = 0
+            for key in range(150, 181):
+                if str(key) in self.device.robovac_data:
+                    self._dps_keys_found += 1
+            
+            if self._dps_keys_found > 0:
+                return f"{self._dps_keys_found}/31 DPS keys"
+            else:
+                return "No DPS data"
         else:
-            return "Not Connected"
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return self.coordinator.last_update_success
+            return "Not connected"
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional attributes."""
         attrs = {
             "device_id": self.device_id,
-            "device_name": self.coordinator.device_name,
+            "device_name": self.device_name,
             "device_model": f"{self.device_model} ({self.device_model_name})",
-            "data_source": self.coordinator.data.get("data_source", "Unknown"),
-            "last_update": self.coordinator.data.get("last_update"),
-            "update_count": self.coordinator.data.get("update_count", 0),
-            "total_dps_keys": self.coordinator.data.get("total_keys", 0),
-            "target_keys_found": self.coordinator.data.get("target_keys_count", 0),
-            "target_keys_list": self.coordinator.data.get("target_keys_found", []),
-            "consecutive_failures": self.coordinator.data.get("consecutive_failures", 0),
-            "mqtt_connected": self.coordinator.data.get("mqtt_connected", False),
-            "log_directory": f"/config/{self.coordinator.log_dir.name}/{self.device_id}",
-            "service_call": f"eufy_robovac_data_logger.log_dps_data",
-            "service_data": {"device_id": self.device_id},
+            "dps_keys_found": self._dps_keys_found,
         }
         
-        # Add connection status
-        if self.coordinator.data.get("is_connected"):
-            attrs["connection_status"] = "Connected"
+        # Add available DPS keys if any
+        if hasattr(self.device, 'robovac_data'):
+            available_keys = []
+            for key in range(150, 181):
+                if str(key) in self.device.robovac_data:
+                    available_keys.append(str(key))
+            if available_keys:
+                attrs["available_dps_keys"] = sorted(available_keys)
+            
+            # Add total keys in robovac_data
+            attrs["total_keys"] = len(self.device.robovac_data)
+        
+        # Add MQTT connection status
+        if hasattr(self.device, 'mqttClient') and self.device.mqttClient:
+            attrs["mqtt_connected"] = self.device.mqttClient.is_connected()
         else:
-            attrs["connection_status"] = "Disconnected"
+            attrs["mqtt_connected"] = False
         
         return attrs
