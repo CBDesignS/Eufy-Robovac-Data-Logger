@@ -62,59 +62,63 @@ class EufyDataLoggerButton(ButtonEntity):
         """Handle the button press - log DPS data."""
         _LOGGER.info("Log button pressed for device %s", self.device_id)
         
-        # Get DPS data from robovac_data
-        if hasattr(self.device, 'robovac_data'):
-            # Extract DPS keys 150-180
-            dps_data = {}
-            all_keys = list(self.device.robovac_data.keys())
-            _LOGGER.debug("All available keys: %s", all_keys)
+        # Get all robovac_data (includes DPS keys)
+        robovac_data = getattr(self.device, 'robovac_data', {})
+        
+        if not robovac_data:
+            _LOGGER.warning("No robovac_data available for device %s", self.device_id)
+            return
             
-            for key in range(150, 181):
-                str_key = str(key)
-                if str_key in self.device.robovac_data:
-                    dps_data[str_key] = self.device.robovac_data[str_key]
+        # Debug: Log all available keys
+        all_keys = list(robovac_data.keys())
+        _LOGGER.debug("All available keys: %s", all_keys)
+        
+        # Collect all DPS data (numeric keys from 150-180)
+        dps_data = {}
+        for key in robovac_data:
+            try:
+                # Check if key is numeric and in range 150-180
+                if isinstance(key, str) and key.isdigit():
+                    key_num = int(key)
+                    if 150 <= key_num <= 180:
+                        dps_data[key] = robovac_data[key]
+            except (ValueError, TypeError):
+                continue
+                
+        if not dps_data:
+            _LOGGER.warning("No DPS data (keys 150-180) found for device %s", self.device_id)
+            return
             
-            if dps_data:
-                # Log to file
-                log_dir = Path(self.hass.config.config_dir) / "eufy_dps_logs" / self.device_id
-                log_dir.mkdir(parents=True, exist_ok=True)
-                
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"dps_log_{timestamp}.json"
-                filepath = log_dir / filename
-                
-                # Get model name from constants
-                model_name = EUFY_CLEAN_DEVICES.get(self.device_model, self.device_model)
-                
-                log_data = {
-                    "timestamp": datetime.now().isoformat(),
-                    "device_id": self.device_id,
-                    "device_name": self.device_name,
-                    "device_model": self.device_model,
-                    "device_model_name": model_name,
-                    "total_keys": len(all_keys),
-                    "logged_keys": len(dps_data),
-                    "keys": dps_data
-                }
-                
-                with open(filepath, 'w') as f:
-                    json.dump(log_data, f, indent=2)
-                
-                _LOGGER.info("Successfully logged %d DPS keys (150-180) to %s", 
-                            len(dps_data), filename)
-                _LOGGER.info("Full path: %s", filepath)
-                
-                # Fire an event
-                self.hass.bus.async_fire(
-                    f"{DOMAIN}_dps_logged",
-                    {
-                        "device_id": self.device_id,
-                        "keys_count": len(dps_data),
-                        "file": str(filepath)
-                    }
-                )
-            else:
-                _LOGGER.warning("No DPS keys in range 150-180 found for device %s", self.device_id)
-                _LOGGER.info("Available keys: %s", sorted(all_keys) if all_keys else "None")
-        else:
-            _LOGGER.error("Device %s has no robovac_data attribute", self.device_id)
+        # Create timestamp for filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"dps_log_{timestamp}.json"
+        
+        # Create directory structure
+        base_path = Path("/config/eufy_dps_logs")
+        device_path = base_path / self.device_id
+        device_path.mkdir(parents=True, exist_ok=True)
+        
+        # Full file path
+        filepath = device_path / filename
+        
+        # Prepare data to write
+        log_data = {
+            "timestamp": timestamp,
+            "device_id": self.device_id,
+            "device_model": self.device_model,
+            "dps_data": dps_data
+        }
+        
+        # FIX: Use executor to avoid blocking call
+        await self.hass.async_add_executor_job(
+            self._write_json_file, filepath, log_data
+        )
+        
+        _LOGGER.info("Successfully logged %d DPS keys (150-180) to %s", 
+                    len(dps_data), filename)
+        _LOGGER.info("Full path: %s", filepath)
+    
+    def _write_json_file(self, filepath, data):
+        """Write JSON file - sync method for executor."""
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
