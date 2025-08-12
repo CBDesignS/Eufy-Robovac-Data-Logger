@@ -54,15 +54,16 @@ class RoboVacMQTTEntity(StateVacuumEntity):
             model=item.device_model,
         )
         self._state = None
-        self._attr_battery_level = None
         self._attr_fan_speed = None
+        # FIX 2 & 3: Remove battery_level attribute and BATTERY feature flag
+        # Battery is now handled by a separate sensor entity
         self._attr_supported_features = (
             VacuumEntityFeature.START
             | VacuumEntityFeature.PAUSE
             | VacuumEntityFeature.STOP
             | VacuumEntityFeature.STATUS
             | VacuumEntityFeature.STATE
-            | VacuumEntityFeature.BATTERY
+            # REMOVED: VacuumEntityFeature.BATTERY - deprecated, use sensor instead
             | VacuumEntityFeature.FAN_SPEED
             | VacuumEntityFeature.RETURN_HOME
             | VacuumEntityFeature.SEND_COMMAND
@@ -75,9 +76,10 @@ class RoboVacMQTTEntity(StateVacuumEntity):
 
         item.add_listener(_threadsafe_update)
 
+    # FIX 1: Implement 'activity' property instead of 'state' property
     @property
-    def state(self) -> str:
-        """Return the state of the vacuum."""
+    def activity(self) -> VacuumActivity:
+        """Return the activity state using VacuumActivity enum."""
         if self._state is None:
             return VacuumActivity.DOCKED
         if self._state == 'standby':
@@ -96,13 +98,9 @@ class RoboVacMQTTEntity(StateVacuumEntity):
             return VacuumActivity.CLEANING
         if self._state == 'error':
             return VacuumActivity.ERROR
-        _LOGGER.debug("Vacuum state: %s", self._state)
-        return self._state
-
-    @property
-    def battery_level(self) -> int:
-        """Return the battery level of the vacuum."""
-        return self._attr_battery_level
+        # Default fallback
+        _LOGGER.debug("Unknown vacuum state: %s, defaulting to IDLE", self._state)
+        return VacuumActivity.IDLE
 
     @property
     def fan_speed(self) -> str:
@@ -114,8 +112,9 @@ class RoboVacMQTTEntity(StateVacuumEntity):
         _LOGGER.debug("Pushed update handler called")
         work_status = await self.vacuum.get_work_status()
         self._state = work_status
-        battery_level = await self.vacuum.get_battery_level()
-        self._attr_battery_level = battery_level
+        # FIX 2: Don't set battery_level here - it's handled by sensor now
+        # Removed: battery_level = await self.vacuum.get_battery_level()
+        # Removed: self._attr_battery_level = battery_level
         clean_speed = await self.vacuum.get_clean_speed()
         self._attr_fan_speed = clean_speed
         self.async_write_ha_state()
