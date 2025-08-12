@@ -34,7 +34,12 @@ class SharedConnect(Base):
     _update_listeners: list[Callable[[], None]]
 
     async def _map_data(self, dps):
+        # FIX: Store ALL DPS keys with their numeric keys
         for key, value in dps.items():
+            # Store with numeric key
+            self.robovac_data[key] = value
+            
+            # Also store with mapped name if it exists
             mapped_keys = [k for k, v in self.dps_map.items() if v == key]
             for mapped_key in mapped_keys:
                 self.robovac_data[mapped_key] = value
@@ -51,167 +56,34 @@ class SharedConnect(Base):
                     await listener()
                 else:
                     listener()
-            except Exception as error:
-                _LOGGER.error(error)
+            except Exception as e:
+                _LOGGER.error(f'Error calling listener: {e}')
 
     def add_listener(self, listener: Callable[[], None]):
-        """Fixed: Changed type annotation to match actual usage"""
-        self._update_listeners.append(listener)
+        if listener not in self._update_listeners:
+            self._update_listeners.append(listener)
 
-    async def get_robovac_data(self):
-        return self.robovac_data
+    def remove_listener(self, listener: Callable[[], None]):
+        if listener in self._update_listeners:
+            self._update_listeners.remove(listener)
 
-    async def get_clean_speed(self):
-        """Fixed: Better handling of different data types for clean speed"""
-        clean_speed_raw = self.robovac_data.get('CLEAN_SPEED')
-        
-        if clean_speed_raw is None:
-            return 'standard'
-        
-        try:
-            # Handle list with single element
-            if isinstance(clean_speed_raw, list) and len(clean_speed_raw) > 0:
-                speed = int(clean_speed_raw[0])  # Fixed: use [0] instead of treating list as int
-                if 0 <= speed < len(EUFY_CLEAN_NOVEL_CLEAN_SPEED):
-                    return EUFY_CLEAN_NOVEL_CLEAN_SPEED[speed].lower()
-            
-            # Handle integer directly
-            elif isinstance(clean_speed_raw, int):
-                if 0 <= clean_speed_raw < len(EUFY_CLEAN_NOVEL_CLEAN_SPEED):
-                    return EUFY_CLEAN_NOVEL_CLEAN_SPEED[clean_speed_raw].lower()
-            
-            # Handle string that's a digit
-            elif isinstance(clean_speed_raw, str) and clean_speed_raw.isdigit():
-                speed = int(clean_speed_raw)
-                if 0 <= speed < len(EUFY_CLEAN_NOVEL_CLEAN_SPEED):
-                    return EUFY_CLEAN_NOVEL_CLEAN_SPEED[speed].lower()
-            
-            # Handle string that's already a speed name
-            elif isinstance(clean_speed_raw, str):
-                return clean_speed_raw.lower()
-            
-        except (IndexError, ValueError, TypeError) as e:
-            _LOGGER.warning(f"Error processing clean speed {clean_speed_raw}: {e}")
-        
-        # Default fallback
-        return 'standard'
+    async def room_clean(self, room_ids: list[int], map_id: int = 3):
+        _LOGGER.debug(f'Room clean: {room_ids}, map_id: {map_id}')
+        rooms_clean = SelectRoomsClean(
+            rooms=[SelectRoomsClean.Room(id=id, order=i + 1) for i, id in enumerate(room_ids)],
+            mode=SelectRoomsClean.Mode.DESCRIPTOR.values_by_name['MODE_NORMAL'].number,
+            map_id=map_id,
+        )
+        value = encode(ModeCtrlRequest, {'method': EUFY_CLEAN_CONTROL.START_SELECT_ROOMS_CLEAN, 'select_rooms_clean': rooms_clean})
+        return await self.send_command({self.dps_map['PLAY_PAUSE']: value})
 
-    async def get_control_response(self) -> ModeCtrlResponse | None:
-        try:
-            value = decode(ModeCtrlResponse, self.robovac_data['PLAY_PAUSE'])
-            print('152 - control response', value)
-            return value or ModeCtrlResponse()
-        except Exception as error:
-            _LOGGER.error(error, exc_info=error)
-            return ModeCtrlResponse()
+    async def zone_clean(self, zones: list[tuple[int, int, int, int]]):
+        value = encode(ModeCtrlRequest, {'method': EUFY_CLEAN_CONTROL.START_ZONE_CLEAN, 'zone_clean': {'zones': [{'x0': x0, 'y0': y0, 'x1': x1, 'y1': y1} for x0, y0, x1, y1 in zones]}})
+        return await self.send_command({self.dps_map['PLAY_PAUSE']: value})
 
-    async def get_play_pause(self) -> bool:
-        return bool(self.robovac_data['PLAY_PAUSE'])
-
-    async def get_work_mode(self) -> str:
-        try:
-            value = decode(WorkStatus, self.robovac_data['WORK_MODE'])
-            mode = value.mode
-            if not mode:
-                return 'auto'
-            else:
-                _LOGGER.debug(f"Work mode: {mode}")
-                return mode.lower() if mode else 'auto'  # Fixed: actually return the mode
-        except Exception:
-            return 'auto'
-
-    async def get_work_status(self) -> str:
-        try:
-            value = decode(WorkStatus, self.robovac_data['WORK_STATUS'])
-
-            """
-                STANDBY = 0
-                SLEEP = 1
-                FAULT = 2
-                CHARGING = 3
-                FAST_MAPPING = 4
-                CLEANING = 5
-                REMOTE_CTRL = 6
-                GO_HOME = 7
-                CRUISIING = 8
-            """
-            match value.state:
-                case 0:
-                    return VacuumActivity.IDLE
-                case 1:
-                    return VacuumActivity.IDLE
-                case 2:
-                    return VacuumActivity.ERROR
-                case 3:
-                    return VacuumActivity.DOCKED
-                case 4:
-                    return VacuumActivity.RETURNING  # this could be better...
-                case 5:
-                    if 'DRYING' in str(value.go_wash):
-                        # drying up after a cleaning session
-                        return VacuumActivity.DOCKED
-                    return VacuumActivity.CLEANING
-                case 6:
-                    return VacuumActivity.CLEANING
-                case 7:
-                    return VacuumActivity.RETURNING
-                case 8:
-                    return VacuumActivity.CLEANING
-                case _:
-                    # Fixed: Handle case where state is not in the known values
-                    if hasattr(value, 'State') and hasattr(value.State, 'DESCRIPTOR'):
-                        state_val = value.State.DESCRIPTOR.values_by_number.get(value.state)
-                        if state_val:
-                            _LOGGER.warning(f"Unknown state: {state_val.name}")
-                        else:
-                            _LOGGER.warning(f"Unknown state number: {value.state}")
-                    else:
-                        _LOGGER.warning(f"Unknown state: {value.state}")
-                    return VacuumActivity.IDLE
-        except Exception as e:
-            _LOGGER.error(f"Error getting work status: {e}")
-            return VacuumActivity.ERROR
-
-    async def get_clean_params_request(self):
-        try:
-            value = decode(CleanParamRequest, self.robovac_data.get('CLEANING_PARAMETERS'))
-            return value
-        except Exception as e:
-            _LOGGER.error('Error getting clean params', exc_info=e)
-            return CleanParamRequest()
-
-    async def get_clean_params_response(self):
-        try:
-            value = decode(CleanParamResponse, self.robovac_data.get('CLEANING_PARAMETERS'))
-            return value or {}
-        except Exception:
-            return {}
-
-    async def get_find_robot(self) -> bool:
-        return bool(self.robovac_data['FIND_ROBOT'])
-
-    async def get_battery_level(self):
-        return int(self.robovac_data['BATTERY_LEVEL'])
-
-    async def get_error_code(self):
-        try:
-            value = decode(ErrorCode, self.robovac_data['ERROR_CODE'])
-            if value.get('warn'):
-                return value['warn'][0]
-            return 0
-        except Exception as error:
-            _LOGGER.error(error)
-
-    async def set_clean_speed(self, clean_speed: EUFY_CLEAN_CLEAN_SPEED):
-        try:
-            set_clean_speed = [s.lower() for s in EUFY_CLEAN_NOVEL_CLEAN_SPEED].index(clean_speed.lower())
-            _LOGGER.debug('Setting clean speed to:', set_clean_speed, EUFY_CLEAN_NOVEL_CLEAN_SPEED, clean_speed)
-            return await self.send_command({self.dps_map['CLEAN_SPEED']: set_clean_speed})
-        except Exception as error:
-            _LOGGER.error(error)
-
-    async def auto_clean(self):
-        value = encode(ModeCtrlRequest, {'auto_clean': {'clean_times': 1}})
+    async def quick_clean(self, room_ids: list[int]):
+        quick_clean = SelectRoomsClean(rooms=[SelectRoomsClean.Room(id=id, order=i + 1) for i, id in enumerate(room_ids)])
+        value = encode(ModeCtrlRequest, {'method': EUFY_CLEAN_CONTROL.START_QUICK_CLEAN, 'select_rooms_clean': quick_clean})
         return await self.send_command({self.dps_map['PLAY_PAUSE']: value})
 
     async def scene_clean(self, id: int):
@@ -251,56 +123,123 @@ class SharedConnect(Base):
         value = encode(ModeCtrlRequest, {'method': EUFY_CLEAN_CONTROL.START_SPOT_CLEAN})
         return await self.send_command({self.dps_map['PLAY_PAUSE']: value})
 
-    async def room_clean(self, room_ids: list[int], map_id: int = 3):
-        _LOGGER.debug(f'Room clean: {room_ids}, map_id: {map_id}')
-        rooms_clean = SelectRoomsClean(
-            rooms=[SelectRoomsClean.Room(id=id, order=i + 1) for i, id in enumerate(room_ids)],
-            mode=SelectRoomsClean.Mode.DESCRIPTOR.values_by_name['GENERAL'].number,
-            clean_times=1,
-            map_id=map_id,
-        )
-        value = encode_message(ModeCtrlRequest(method=EUFY_CLEAN_CONTROL.START_SELECT_ROOMS_CLEAN, select_rooms_clean=rooms_clean))
+    async def set_map(self, map_id: int):
+        value = encode(ModeCtrlRequest, {'method': EUFY_CLEAN_CONTROL.SELECT_MAP, 'select_map': {'map_id': map_id}})
         return await self.send_command({self.dps_map['PLAY_PAUSE']: value})
 
-    async def set_clean_param(self, config: dict[str, Any]):
-        is_mop = False
-        if ct := config.get('clean_type'):
-            if ct not in CleanType.Value.keys():
-                raise ValueError(f'Invalid clean type: {ct}, allowed values: {CleanType.Value.keys()}')
-            if ct in ['SWEEP_AND_MOP', 'MOP_ONLY']:
-                is_mop = True
-            clean_type = {'value': CleanType.Value.DESCRIPTOR.values_by_name['SWEEP_AND_MOP'].number}
-        else:
-            clean_type = {}
+    async def set_clean_param(self, param):
+        value = encode(CleanParamRequest, param)
+        return await self.send_command({self.dps_map['CLEANING_PARAMETERS']: value})
 
-        if ce := config.get('clean_extent'):
-            if ce not in CleanExtent.Value.keys():
-                raise ValueError(f'Invalid clean extent: {ce}, allowed values: {CleanExtent.keys()}')
-            clean_extent = {'value': CleanExtent.Value.DESCRIPTOR.values_by_name[ce].number}
-        else:
-            clean_extent = {}
+    async def get_control_response(self):
+        data = self.robovac_data.get('PLAY_PAUSE')
+        if data:
+            try:
+                response = decode(ModeCtrlResponse, data)
+                self.robovac_data['PLAY_PAUSE_RESPONSE'] = response
+            except Exception as e:
+                _LOGGER.debug('error in mapping to control response', e)
 
-        if is_mop and (mm := config.get('mop_mode')):
-            if mm not in MopMode.Level.keys():
-                raise ValueError(f'Invalid mop mode: {mm}, allowed values: {MopMode.Level.keys()}')
-            mop_mode = {'level': MopMode.Level.DESCRIPTOR.values_by_name[mm].number}
-        else:
-            mop_mode = {}
-        if not is_mop and mop_mode:
-            raise ValueError('Mop mode is not allowed for non-mop commands')
+    async def get_work_status(self) -> VacuumActivity:
+        data = self.robovac_data.get('WORK_STATUS')
+        if data:
+            try:
+                response = decode(WorkStatus, data)
+                state = response.work_mode
+                if state == 0:
+                    return 'standby'
+                if state == 1:
+                    return 'sleeping'
+                if state == 2:
+                    return 'error'
+                if state == 3:
+                    return 'recharging'
+                if state == 4:
+                    return 'fastmapping'
+                if state == 5:
+                    return 'cleaning'
+                if state == 6:
+                    return 'remote'
+                if state == 7:
+                    return 'recharge'
+                if state == 8:
+                    return 'pause'
+                if state == 9:
+                    return 'finished'
+                if state == 10:
+                    return 'locate'
+                if state == 11:
+                    return 'selectroom'
+                if state == 12:
+                    return 'station'
+                if state == 13:
+                    return 'cruise'
+                if state == 14:
+                    return 'breakpointrecharge'
+                if state == 15:
+                    return 'cruisepause'
+                _LOGGER.info(f"Unknown work status: {state}")
+                return state
+            except Exception as e:
+                _LOGGER.debug('error in mapping to work status', e)
+        return 'standby'
 
-        request_params = {
-            'clean_param': {
-                'clean_type': clean_type,
-                'clean_extent': clean_extent,
-                'mop_mode': mop_mode,
-                'smart_mode_sw': {},
-                'clean_times': 1
+    async def get_clean_params_response(self):
+        data = self.robovac_data.get('CLEANING_PARAMETERS')
+        if data:
+            try:
+                response = decode(CleanParamResponse, data)
+                return response
+            except Exception as e:
+                _LOGGER.debug('error in mapping to params response', e)
+
+    async def get_error_response(self):
+        data = self.robovac_data.get('ERROR_CODE')
+        if data:
+            try:
+                response = decode(ErrorCode, data)
+                return response
+            except Exception as e:
+                _LOGGER.debug('error in mapping to error response', e)
+
+    async def get_work_mode(self):
+        work_status = await self.get_work_status()
+        return work_status
+
+    async def get_battery_level(self):
+        data = self.robovac_data.get('BATTERY_LEVEL')
+        return data
+
+    async def get_clean_speed(self):
+        params_res = await self.get_clean_params_response()
+        if params_res and hasattr(params_res, 'clean_param') and hasattr(params_res.clean_param, 'clean_speed'):
+            return EUFY_CLEAN_NOVEL_CLEAN_SPEED[params_res.clean_param.clean_speed]
+        return None
+
+    async def set_clean_speed(self, clean_speed: str):
+        if clean_speed in EUFY_CLEAN_NOVEL_CLEAN_SPEED:
+            clean_speed = EUFY_CLEAN_NOVEL_CLEAN_SPEED.index(clean_speed)
+        else:
+            clean_speed = 1
+        # Get current params first
+        params_res = await self.get_clean_params_response()
+        if params_res and hasattr(params_res, 'clean_param'):
+            # Use existing params and just update speed
+            param = {
+                'clean_type': params_res.clean_param.clean_type,
+                'clean_speed': clean_speed,
+                'clean_extent': params_res.clean_param.clean_extent,
+                'mop_mode': params_res.clean_param.mop_mode
             }
-        }
-        print('setCleanParam - requestParams', request_params)
-        value = encode(CleanParamRequest, request_params)
-        await self.send_command({self.dps_map['CLEANING_PARAMETERS']: value})
+        else:
+            # Default params if can't get current
+            param = {
+                'clean_type': CleanType.BOTH_CLEAN,
+                'clean_speed': clean_speed,
+                'clean_extent': CleanExtent.DEFAULT,
+                'mop_mode': MopMode.HIGH
+            }
+        return await self.set_clean_param(param)
 
-    async def send_command(self, data) -> None:
-        raise NotImplementedError('Method not implemented.')
+    async def send_command(self, dps):
+        raise NotImplementedError('Not implemented')
