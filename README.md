@@ -5,9 +5,12 @@
 
 ## Shout out to the people behind the code that I used to make this work.
 
-The integration would not be possible without the code and work by both https://github.com/jeppesens/eufy-clean & https://github.com/martijnpoppen/eufy-clean
-Their code makes this intehration work, Login, talk to the correct Eufy servers. Access the api server to get the current DPS data for this integration ot log.
-Without these people this would not be possible. I just expanded upon their work to try and enhance the Eufy Robovac comminity and users.
+The integration would not be possible without the code and work by both
+https://github.com/jeppesens/eufy-clean & https://github.com/martijnpoppen/eufy-clean.
+Their code makes this integration work, Login, talk to the correct Eufy servers, Access the api server to get the current DPS data for this integration to log.
+Without these people this would not be possible.
+Thank you [martijnpoppen](https://github.com/martijnpoppen) & [jeppesens](https://github.com/jeppesens).
+I just expanded upon their work to try and enhance the Eufy Robovac comminity and users.
 
 
 A simple Home Assistant custom component that logs Eufy Robovac API data to JSON files for external analysis.
