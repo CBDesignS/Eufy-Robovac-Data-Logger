@@ -1,3 +1,8 @@
+# Login.py v3 - Fixed for Eufy API changes Aug 2025
+# - Handles None dps fields
+# - Dynamic device model extraction 
+# - No hardcoded device data
+
 from ..controllers.Base import Base
 from ..EufyApi import EufyApi
 
