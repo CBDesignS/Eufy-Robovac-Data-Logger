@@ -43,7 +43,7 @@ class EufyLogin(Base):
             await self.login({'mqtt': True})
 
     async def getDevices(self) -> None:
-        self.eufy_api_devices = await self.eufyApi.get_cloud_device_list()
+        # self.eufy_api_devices = await self.eufyApi.get_cloud_device_list()
         devices = await self.eufyApi.get_device_list()
         devices = [
             {
