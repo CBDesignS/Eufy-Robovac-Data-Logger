@@ -1,6 +1,10 @@
-# rev 7 remove old logging and enable new mqtt logging.
-# rev 6 add full as possible mqtt logging to try and find out whats going out and in thru mqtt.
-# rev 5 full wakeup restart of mqtt to try and keep the connection from going stale
+# v7 - Move Logging from H.A main log over to /config/logs/eufy_mqtt_traffic.log
+# v6 - Added comprehensive MQTT message logging and multiple wake-up command attempts without reconnection logic
+# v5 - Added detailed MQTT message logging with JSON structure inspection and hex dumps
+# v4 - Implemented comprehensive wake-up attempts with 11 different find_robot value formats
+# v3 - Enhanced wake-up sequence with additional status request methods (battery, error, work status)
+# v2 - Added multiple find_robot value attempts (boolean, integer, string) for wake-up testing
+# v1 - Fixed ModeCtrlRequest 'action' field error by removing incorrect find_robot protobuf usage
 import asyncio
 import json
 import logging
@@ -8,6 +12,7 @@ import time
 from functools import partial
 from os import path
 from threading import Thread
+from datetime import datetime
 
 from google.protobuf.message import Message
 from paho.mqtt import client as mqtt
@@ -17,6 +22,42 @@ from ..utils import sleep
 from .SharedConnect import SharedConnect
 
 _LOGGER = logging.getLogger(__name__)
+
+# Set up file logging for MQTT traffic
+import os
+from logging.handlers import TimedRotatingFileHandler
+
+# Create a separate logger for MQTT traffic
+mqtt_logger = logging.getLogger('eufy_mqtt_traffic')
+mqtt_logger.setLevel(logging.DEBUG)
+
+# Create logs directory if it doesn't exist
+log_dir = "/config/logs"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+# Create a log filename with date
+from datetime import datetime
+date_str = datetime.now().strftime("%Y%m%d")
+log_file = os.path.join(log_dir, f"eufy_mqtt_log_{date_str}.log")
+
+# Create timed rotating file handler (new file each day at midnight, keep 30 days)
+file_handler = TimedRotatingFileHandler(
+    log_file, 
+    when='midnight',
+    interval=1,
+    backupCount=30,
+    encoding='utf-8'
+)
+file_handler.suffix = "%Y%m%d"
+file_handler.setLevel(logging.DEBUG)
+
+# Create formatter
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Add handler to logger
+mqtt_logger.addHandler(file_handler)
 
 
 def get_blocking_mqtt_client(client_id: str, username: str, certificate_pem: str, private_key: str):
@@ -54,9 +95,6 @@ class MqttConnect(SharedConnect):
         self.mqttClient = None
         self.mqttCredentials = None
         self._loop = None  # Store reference to the event loop
-        self._polling_task = None  # Store reference to polling task
-        self.last_data_received = None
-        self.connection_time = None
 
     async def connect(self):
         # Store the current event loop for later use
@@ -66,9 +104,6 @@ class MqttConnect(SharedConnect):
         await self.connectMqtt(self.eufyCleanApi.mqtt_credentials)
         await self.updateDevice(True)
         await sleep(2000)
-        
-        # Start periodic polling to keep robot awake
-        self._polling_task = asyncio.create_task(self._periodic_polling())
 
     async def updateDevice(self, checkApiType=False):
         try:
@@ -83,6 +118,7 @@ class MqttConnect(SharedConnect):
     async def connectMqtt(self, mqttCredentials):
         if mqttCredentials:
             _LOGGER.debug('MQTT Credentials found')
+            mqtt_logger.info(f"=== NEW MQTT SESSION STARTED for {self.deviceId} ===")
             self.mqttCredentials = mqttCredentials
             username = self.mqttCredentials['thing_name']
             client_id = f"android-{self.mqttCredentials['app_name']}-eufy_android_{self.openudid}_{self.mqttCredentials['user_id']}-{int(time.time() * 1000)}"
@@ -116,18 +152,20 @@ class MqttConnect(SharedConnect):
         _LOGGER.debug('Connected to MQTT')
         _LOGGER.info(f"Subscribe to cmd/eufy_home/{self.deviceModel}/{self.deviceId}/res")
         self.mqttClient.subscribe(f"cmd/eufy_home/{self.deviceModel}/{self.deviceId}/res")
+        mqtt_logger.info(f"MQTT Connected - RC: {rc}, Subscribed to: cmd/eufy_home/{self.deviceModel}/{self.deviceId}/res")
         
-        # Mark when we connected
-        self.last_data_received = None
-        self.connection_time = time.time()
-        
-        # Don't send wake-up nudge on reconnect - let the robot naturally start sending data
-        _LOGGER.debug("Connection established, waiting for data...")
+        # Send wake-up nudge after connection
+        if self._loop and not self._loop.is_closed():
+            asyncio.run_coroutine_threadsafe(
+                self.send_find_robot_command(), 
+                self._loop
+            )
 
     async def send_find_robot_command(self):
         """Send find robot command to wake up the device."""
         try:
             _LOGGER.debug("Sending wake-up nudge - trying multiple approaches")
+            mqtt_logger.info("=== WAKE-UP SEQUENCE STARTED ===")
             
             # Try different find_robot values
             find_robot_values = [
@@ -146,20 +184,24 @@ class MqttConnect(SharedConnect):
             
             for i, value in enumerate(find_robot_values):
                 _LOGGER.debug(f"Attempt {i+1}: Sending find_robot with value: {value} (type: {type(value).__name__})")
+                mqtt_logger.debug(f"Wake-up attempt {i+1}: DPS 160 = {value} (type: {type(value).__name__})")
                 try:
                     await self.send_command({self.dps_map['FIND_ROBOT']: value})
                     await asyncio.sleep(1)  # Give it time to respond
                 except Exception as e:
                     _LOGGER.debug(f"Attempt {i+1} failed: {e}")
+                    mqtt_logger.error(f"Wake-up attempt {i+1} failed: {e}")
             
             # Also try some other wake-up approaches
             _LOGGER.debug("Trying alternative wake-up methods")
+            mqtt_logger.info("=== TRYING ALTERNATIVE WAKE-UP METHODS ===")
             
             # Try requesting various status updates
             status_fields = ['WORK_STATUS', 'BATTERY_LEVEL', 'ERROR_CODE', 'WORK_MODE']
             for field in status_fields:
                 if field in self.dps_map:
                     _LOGGER.debug(f"Requesting {field}")
+                    mqtt_logger.debug(f"Status request: DPS {self.dps_map[field]} ({field})")
                     try:
                         await self.send_command({self.dps_map[field]: ""})
                         await asyncio.sleep(0.5)
@@ -167,80 +209,31 @@ class MqttConnect(SharedConnect):
                         pass
             
             _LOGGER.debug("Wake-up nudge attempts completed")
+            mqtt_logger.info("=== WAKE-UP SEQUENCE COMPLETED ===")
         except Exception as error:
             _LOGGER.error(f"Error sending wake-up nudge: {error}")
-    
-    async def send_wake_up_sequence(self):
-        """Try various methods to wake up the robot"""
-        try:
-            _LOGGER.info("Starting comprehensive wake-up sequence")
-            start_time = time.time()
-            
-            # First try find_robot variations
-            await self.send_find_robot_command()
-            
-            # Check if we got any data
-            await asyncio.sleep(2)
-            if self.last_data_received and self.last_data_received > start_time:
-                _LOGGER.info("Wake-up successful! Robot is responding")
-                return
-            
-            # Try more aggressive wake-up methods
-            _LOGGER.info("No response yet, trying command-based wake-up")
-            
-            # Try sending a pause command (might wake it even if already paused)
-            try:
-                from ..proto.cloud.control_pb2 import ModeCtrlRequest
-                from ..constants.state import EUFY_CLEAN_CONTROL
-                from ..utils import encode
-                
-                value = encode(ModeCtrlRequest, {'method': EUFY_CLEAN_CONTROL.PAUSE_TASK})
-                await self.send_command({self.dps_map['PLAY_PAUSE']: value})
-                await asyncio.sleep(2)
-            except Exception as e:
-                _LOGGER.debug(f"Pause command failed: {e}")
-            
-            # Check again
-            if self.last_data_received and self.last_data_received > start_time:
-                _LOGGER.info("Wake-up successful via pause command!")
-                return
-            
-            # Try requesting cleaning parameters
-            try:
-                await self.send_command({self.dps_map['CLEANING_PARAMETERS']: ""})
-                await asyncio.sleep(2)
-            except:
-                pass
-            
-            # Final check
-            if self.last_data_received and self.last_data_received > start_time:
-                _LOGGER.info("Wake-up successful!")
-            else:
-                _LOGGER.warning("Robot did not respond to wake-up attempts. It may be in deep sleep.")
-                
-        except Exception as e:
-            _LOGGER.error(f"Error in wake-up sequence: {e}")
+            mqtt_logger.error(f"Wake-up sequence error: {error}")
 
     def on_message(self, client, userdata, msg: Message):
         """Log everything for debugging and handle messages"""
         try:
-            # Log raw message details
-            _LOGGER.debug(f"=== MQTT MESSAGE RECEIVED ===")
-            _LOGGER.debug(f"  Topic: {msg.topic}")
-            _LOGGER.debug(f"  QoS: {msg.qos}")
-            _LOGGER.debug(f"  Retain: {msg.retain}")
-            _LOGGER.debug(f"  Payload length: {len(msg.payload)} bytes")
-            _LOGGER.debug(f"  Raw payload (first 200 chars): {str(msg.payload)[:200]}")
+            # Log to file instead of HA log
+            mqtt_logger.info(f"=== MQTT MESSAGE RECEIVED ===")
+            mqtt_logger.info(f"  Topic: {msg.topic}")
+            mqtt_logger.info(f"  QoS: {msg.qos}")
+            mqtt_logger.info(f"  Retain: {msg.retain}")
+            mqtt_logger.info(f"  Payload length: {len(msg.payload)} bytes")
+            mqtt_logger.debug(f"  Raw payload (first 200 chars): {str(msg.payload)[:200]}")
             
             # Try to decode as JSON
             try:
                 messageParsed = json.loads(msg.payload.decode())
-                _LOGGER.debug(f"  Decoded JSON: {json.dumps(messageParsed, indent=2)}")
+                mqtt_logger.info(f"  Decoded JSON: {json.dumps(messageParsed, indent=2)}")
             except json.JSONDecodeError:
-                _LOGGER.error(f"Failed to decode JSON, raw hex: {msg.payload.hex()}")
+                mqtt_logger.error(f"Failed to decode JSON, raw hex: {msg.payload.hex()}")
                 messageParsed = {}
             
-            # Track that we received data
+            # Track that we received data - still log to HA for basic status
             self.last_data_received = time.time()
             
             # Get the payload data - try multiple paths
@@ -262,16 +255,16 @@ class MqttConnect(SharedConnect):
                     payload_data = messageParsed['data']
             
             if payload_data:
-                _LOGGER.info(f"DPS data received! Robot appears to be awake.")
-                _LOGGER.debug(f"  DPS Keys: {list(payload_data.keys())}")
-                _LOGGER.debug(f"  DPS Data: {json.dumps(payload_data, indent=2)}")
+                _LOGGER.info(f"DPS data received! Robot appears to be awake. Keys: {list(payload_data.keys())}")
+                mqtt_logger.info(f"  DPS Keys found: {list(payload_data.keys())}")
+                mqtt_logger.info(f"  DPS Data: {json.dumps(payload_data, indent=2)}")
                 
                 # Log hex dump of any binary data
                 for key, value in payload_data.items():
                     if isinstance(value, (bytes, bytearray)):
-                        _LOGGER.debug(f"  DPS {key} (hex): {value.hex()}")
+                        mqtt_logger.debug(f"  DPS {key} (hex): {value.hex()}")
                     elif isinstance(value, str) and len(value) > 50:
-                        _LOGGER.debug(f"  DPS {key} (truncated): {value[:50]}...")
+                        mqtt_logger.debug(f"  DPS {key} (truncated): {value[:50]}...")
                 
                 # Schedule the async function to run in the event loop
                 if self._loop and not self._loop.is_closed():
@@ -282,19 +275,17 @@ class MqttConnect(SharedConnect):
                 else:
                     _LOGGER.warning("Event loop not available for message processing")
             else:
-                _LOGGER.debug("  No DPS data found in message")
-                _LOGGER.debug(f"  Message structure: {list(messageParsed.keys()) if isinstance(messageParsed, dict) else 'not a dict'}")
+                mqtt_logger.info("  No DPS data found in message")
+                mqtt_logger.debug(f"  Message structure: {list(messageParsed.keys()) if isinstance(messageParsed, dict) else 'not a dict'}")
                 
         except Exception as error:
             _LOGGER.error(f'Error processing message: {error}', exc_info=True)
+            mqtt_logger.error(f'Error processing message: {error}', exc_info=True)
 
     def on_disconnect(self, client, userdata, rc):
         if rc != 0:
             _LOGGER.warning('Unexpected MQTT disconnection. Will auto-reconnect')
-        
-        # Cancel polling task on disconnect
-        if self._polling_task and not self._polling_task.done():
-            self._polling_task.cancel()
+            mqtt_logger.warning(f'MQTT Disconnected - RC: {rc}')
 
     async def send_command(self, dataPayload) -> None:
         try:
@@ -302,14 +293,14 @@ class MqttConnect(SharedConnect):
                 _LOGGER.error("No MQTT credentials available")
                 return
             
-            # Log what we're sending
-            _LOGGER.debug(f"=== SENDING MQTT COMMAND ===")
-            _LOGGER.debug(f"  DPS Payload: {json.dumps(dataPayload, indent=2)}")
+            # Log to file
+            mqtt_logger.info(f"=== SENDING MQTT COMMAND ===")
+            mqtt_logger.info(f"  DPS Payload: {json.dumps(dataPayload, indent=2)}")
             
             # Check for any binary data in the payload
             for key, value in dataPayload.items():
                 if isinstance(value, (bytes, bytearray)):
-                    _LOGGER.debug(f"  DPS {key} (hex): {value.hex()}")
+                    mqtt_logger.debug(f"  DPS {key} (hex): {value.hex()}")
                 
             payload = json.dumps({
                 'account_id': self.mqttCredentials['user_id'],
@@ -334,135 +325,38 @@ class MqttConnect(SharedConnect):
                 'payload': payload,
             }
             
-            _LOGGER.debug(f"  Full MQTT packet: {json.dumps(mqttVal, indent=2)}")
+            mqtt_logger.debug(f"  Full MQTT packet: {json.dumps(mqttVal, indent=2)}")
             
             topic = f"cmd/eufy_home/{self.deviceModel}/{self.deviceId}/req"
-            _LOGGER.debug(f"  Publishing to topic: {topic}")
+            mqtt_logger.info(f"  Publishing to topic: {topic}")
             
             if self.mqttClient and self.mqttClient.is_connected():
                 result = self.mqttClient.publish(topic, json.dumps(mqttVal))
-                _LOGGER.debug(f"  Publish result: {result.rc} (0=success)")
+                mqtt_logger.info(f"  Publish result: {result.rc} (0=success)")
+                _LOGGER.debug(f"Command sent successfully to {self.deviceId}")
             else:
                 _LOGGER.error("MQTT client not connected")
+                mqtt_logger.error("MQTT client not connected - command not sent")
         except Exception as error:
             _LOGGER.error(f"Error sending command: {error}", exc_info=True)
+            mqtt_logger.error(f"Error sending command: {error}", exc_info=True)
     
-    async def _periodic_polling(self):
-        """Periodically check connection and reconnect if no data"""
-        check_interval = 60  # Check every minute
-        no_data_timeout = 300  # 5 minutes without data triggers reconnect
-        
-        while True:
-            try:
-                # Check if we have recent data
-                if self.last_data_received:
-                    time_since_last_data = time.time() - self.last_data_received
-                    
-                    if time_since_last_data > no_data_timeout:
-                        _LOGGER.warning(f"No data for {time_since_last_data:.0f} seconds, triggering reconnection")
-                        await self._reconnect()
-                    elif time_since_last_data > 60:
-                        _LOGGER.debug(f"No data for {time_since_last_data:.0f} seconds")
-                else:
-                    # No data ever received since connection
-                    if self.connection_time and (time.time() - self.connection_time) > 60:
-                        _LOGGER.warning("No data received since connection, triggering reconnection")
-                        await self._reconnect()
-                
-                await asyncio.sleep(check_interval)
-                    
-            except asyncio.CancelledError:
-                _LOGGER.info("Periodic polling cancelled")
-                break
-            except Exception as e:
-                _LOGGER.error(f"Error in periodic polling: {e}")
-                await asyncio.sleep(check_interval)
-    
-    async def _reconnect(self):
-        """Disconnect and reconnect to wake up the robot"""
+    async def test_find_robot(self, value=None):
+        """Test find robot command with a specific value - can be called from service"""
         try:
-            _LOGGER.info("Starting reconnection process")
-            
-            # Cancel the polling task to avoid conflicts
-            if self._polling_task and not self._polling_task.done():
-                self._polling_task.cancel()
-                try:
-                    await self._polling_task
-                except asyncio.CancelledError:
-                    pass
-            
-            # Disconnect MQTT client
-            if self.mqttClient:
-                _LOGGER.debug("Disconnecting MQTT client")
-                try:
-                    self.mqttClient.loop_stop()
-                    self.mqttClient.disconnect()
-                except:
-                    pass
-                self.mqttClient = None
-            
-            # Wait a bit for clean disconnect
-            await asyncio.sleep(2)
-            
-            # Reset connection tracking
-            self.last_data_received = None
-            self.connection_time = None
-            
-            # Re-login and reconnect
-            _LOGGER.debug("Re-establishing connection")
-            await self.eufyCleanApi.login({'mqtt': True})
-            await self.connectMqtt(self.eufyCleanApi.mqtt_credentials)
-            
-            # Try to get initial device data
-            await self.updateDevice(True)
-            
-            # Restart polling task
-            self._polling_task = asyncio.create_task(self._periodic_polling())
-            
-            _LOGGER.info("Reconnection complete")
-            
+            mqtt_logger.info(f"=== MANUAL FIND ROBOT TEST ===")
+            if value is None:
+                # Try the most likely candidates
+                test_values = [1, True, "1", 2]
+                for v in test_values:
+                    _LOGGER.info(f"Testing find_robot with value: {v}")
+                    mqtt_logger.info(f"Testing find_robot with value: {v}")
+                    await self.send_command({self.dps_map['FIND_ROBOT']: v})
+                    await asyncio.sleep(3)  # Wait to hear beep
+            else:
+                _LOGGER.info(f"Testing find_robot with custom value: {value}")
+                mqtt_logger.info(f"Testing find_robot with custom value: {value}")
+                await self.send_command({self.dps_map['FIND_ROBOT']: value})
         except Exception as e:
-            _LOGGER.error(f"Reconnection failed: {e}")
-            # Schedule another reconnection attempt
-            await asyncio.sleep(30)
-            if self._loop and not self._loop.is_closed():
-                asyncio.create_task(self._reconnect())
-    
-    async def force_wake_up(self):
-        """Force wake-up attempt - can be called manually"""
-        _LOGGER.info("Forcing wake-up attempt via reconnection")
-        
-        # Just trigger a reconnection
-        await self._reconnect()
-        
-        # Wait for data
-        await asyncio.sleep(10)
-        
-        # Report result
-        if self.last_data_received:
-            _LOGGER.info("Force wake-up successful!")
-            return True
-        else:
-            _LOGGER.warning("Force wake-up failed - robot may be in deep sleep")
-            return False
-    
-    async def disconnect(self):
-        """Properly disconnect and cleanup"""
-        try:
-            # Cancel polling task
-            if self._polling_task and not self._polling_task.done():
-                self._polling_task.cancel()
-                try:
-                    await self._polling_task
-                except asyncio.CancelledError:
-                    pass
-            
-            # Disconnect MQTT
-            if self.mqttClient:
-                self.mqttClient.loop_stop()
-                self.mqttClient.disconnect()
-                self.mqttClient = None
-                
-            _LOGGER.info("Disconnected from MQTT")
-        except Exception as e:
-            _LOGGER.error(f"Error during disconnect: {e}")
+            _LOGGER.error(f"Error testing find_robot: {e}")
+            mqtt_logger.error(f"Error testing find_robot: {e}")
