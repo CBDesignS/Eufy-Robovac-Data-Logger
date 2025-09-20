@@ -17,7 +17,11 @@ A simple Home Assistant custom component that logs Eufy Robovac API data to JSON
 
 ## 🎯 What This Integration Does
 
-This integration connects to your Eufy Robovac via MQTT and dumps all protobuf data (keys 150-180) to JSON files every 60 seconds. Perfect for researchers and developers who want to analyze Eufy's data structure.
+This integration connects to your Eufy Robovac via MQTT and dumps all protobuf data (keys 150-180) to JSON files whenever your press the log button. Perfect for researchers and developers who want to analyze Eufy's data structure.
+Eufy decided to tweak the login and authentication by including a "Gtoken" authentication code. O how much joy this was to decode and update the integration to now include the illusive "Gtoken" not to worry, its sorted in the latest code.
+Due to the latest firmware and app updates the Robovac now seems to go into a DEEP idle sleep. it tells the eufy server its sleeping/idle and all comminication mqtt data related to the dps keys and accessory data keys seems to stop dead
+No matter what I try I just can not "NUDGE" the mqtt data stream back to life. I think only the app can do it via a different server or rest command that we do not have access to. 
+The integration now loggs EVERY mqtt command that it finds into a log file /config/logs/eufy_mqtt_XXXXXX.log  the XXXXXX is a 24hour date stamped log and will grow massive.. 10,000 lines + in an hour Be Warned
 
 ### Core Features
 - **MQTT Data Collection**: Uses proven Eufy API to fetch device data
