@@ -1,4 +1,5 @@
-# v9 - Separated connection logging (always to HA) from message traffic logging (file only) to reduce HA log spam
+# v10 - Update Battery sensor so it now reads from the dps data key 163:96 as that seems to be a good match
+# v9 - Added get_battery_level() method to support battery sensor entity
 # v8 - Remove ha log spam commands and only show errors in ha log.
 # v7 - Move Logging from H.A main log over to /config/logs/eufy_mqtt_traffic.log
 # v6 - Added comprehensive MQTT message logging and multiple wake-up command attempts without reconnection logic
@@ -166,7 +167,7 @@ class MqttConnect(SharedConnect):
     async def send_find_robot_command(self):
         """Send find robot command to wake up the device."""
         try:
-            # Log wake-up start to file only
+            _LOGGER.debug("Sending wake-up nudge - trying multiple approaches")
             mqtt_logger.info("=== WAKE-UP SEQUENCE STARTED ===")
             
             # Try different find_robot values
@@ -185,20 +186,24 @@ class MqttConnect(SharedConnect):
             ]
             
             for i, value in enumerate(find_robot_values):
+                _LOGGER.debug(f"Attempt {i+1}: Sending find_robot with value: {value} (type: {type(value).__name__})")
                 mqtt_logger.debug(f"Wake-up attempt {i+1}: DPS 160 = {value} (type: {type(value).__name__})")
                 try:
                     await self.send_command({self.dps_map['FIND_ROBOT']: value})
                     await asyncio.sleep(1)  # Give it time to respond
                 except Exception as e:
+                    _LOGGER.debug(f"Attempt {i+1} failed: {e}")
                     mqtt_logger.error(f"Wake-up attempt {i+1} failed: {e}")
             
             # Also try some other wake-up approaches
+            _LOGGER.debug("Trying alternative wake-up methods")
             mqtt_logger.info("=== TRYING ALTERNATIVE WAKE-UP METHODS ===")
             
             # Try requesting various status updates
             status_fields = ['WORK_STATUS', 'BATTERY_LEVEL', 'ERROR_CODE', 'WORK_MODE']
             for field in status_fields:
                 if field in self.dps_map:
+                    _LOGGER.debug(f"Requesting {field}")
                     mqtt_logger.debug(f"Status request: DPS {self.dps_map[field]} ({field})")
                     try:
                         await self.send_command({self.dps_map[field]: ""})
@@ -206,6 +211,7 @@ class MqttConnect(SharedConnect):
                     except:
                         pass
             
+            _LOGGER.debug("Wake-up nudge attempts completed")
             mqtt_logger.info("=== WAKE-UP SEQUENCE COMPLETED ===")
         except Exception as error:
             _LOGGER.error(f"Error sending wake-up nudge: {error}")
@@ -214,7 +220,7 @@ class MqttConnect(SharedConnect):
     def on_message(self, client, userdata, msg: Message):
         """Log everything for debugging and handle messages"""
         try:
-            # Log to file only - NOT to HA log
+            # Log to file instead of HA log
             mqtt_logger.info(f"=== MQTT MESSAGE RECEIVED ===")
             mqtt_logger.info(f"  Topic: {msg.topic}")
             mqtt_logger.info(f"  QoS: {msg.qos}")
@@ -230,7 +236,7 @@ class MqttConnect(SharedConnect):
                 mqtt_logger.error(f"Failed to decode JSON, raw hex: {msg.payload.hex()}")
                 messageParsed = {}
             
-            # Track that we received data
+            # Track that we received data - still log to HA for basic status
             self.last_data_received = time.time()
             
             # Get the payload data - try multiple paths
@@ -252,17 +258,16 @@ class MqttConnect(SharedConnect):
                     payload_data = messageParsed['data']
             
             if payload_data:
-                # Log to file only
-                mqtt_logger.info(f"DPS data received! Robot appears to be awake.")
+                _LOGGER.info(f"DPS data received! Robot appears to be awake.")
                 mqtt_logger.info(f"  DPS Keys found: {list(payload_data.keys())}")
                 mqtt_logger.info(f"  DPS Data: {json.dumps(payload_data, indent=2)}")
                 
-                # Only log to HA if it's the first data received
+                # Only log to HA if it's the first data received after connection
                 if not hasattr(self, '_first_data_logged'):
                     _LOGGER.info(f"First DPS data received - robot is active")
                     self._first_data_logged = True
                 
-                # Log hex dump of any binary data to file only
+                # Log hex dump of any binary data
                 for key, value in payload_data.items():
                     if isinstance(value, (bytes, bytearray)):
                         mqtt_logger.debug(f"  DPS {key} (hex): {value.hex()}")
@@ -296,7 +301,7 @@ class MqttConnect(SharedConnect):
                 _LOGGER.error("No MQTT credentials available")
                 return
             
-            # Log to file only
+            # Log to file
             mqtt_logger.info(f"=== SENDING MQTT COMMAND ===")
             mqtt_logger.info(f"  DPS Payload: {json.dumps(dataPayload, indent=2)}")
             
@@ -336,7 +341,7 @@ class MqttConnect(SharedConnect):
             if self.mqttClient and self.mqttClient.is_connected():
                 result = self.mqttClient.publish(topic, json.dumps(mqttVal))
                 mqtt_logger.info(f"  Publish result: {result.rc} (0=success)")
-                # Only log errors to HA
+                # Only log to HA on errors
                 if result.rc != 0:
                     _LOGGER.error(f"Failed to send command to {self.deviceId}, result: {result.rc}")
             else:
@@ -365,3 +370,26 @@ class MqttConnect(SharedConnect):
         except Exception as e:
             _LOGGER.error(f"Error testing find_robot: {e}")
             mqtt_logger.error(f"Error testing find_robot: {e}")
+    
+    async def get_battery_level(self):
+        """Get the battery level from DPS key 163."""
+        try:
+            # Check if we have battery data in robovac_data
+            battery_key = self.dps_map.get('BATTERY_LEVEL', '163')
+            battery_value = self.robovac_data.get(battery_key)
+            
+            if battery_value is not None:
+                # Convert to int if it's a string
+                if isinstance(battery_value, str):
+                    return int(battery_value)
+                elif isinstance(battery_value, (int, float)):
+                    return int(battery_value)
+                else:
+                    _LOGGER.warning(f"Unexpected battery value type: {type(battery_value)} - {battery_value}")
+                    return None
+            else:
+                _LOGGER.debug(f"No battery data found at key {battery_key}")
+                return None
+        except Exception as e:
+            _LOGGER.error(f"Error getting battery level: {e}")
+            return None
